@@ -1,0 +1,9 @@
+family: DICT_APRILTAG_36h11
+mode: single_tag
+tag_id: 0
+edge_length_m: 0.10
+image_path: assets/apriltag36h11_id0.png
+placement:
+  parent_prim: /World/Room/WestWall
+  translation_m: [0.0, 1.45, 0.02]
+  rpy_deg: [0.0, 0.0, 0.0]

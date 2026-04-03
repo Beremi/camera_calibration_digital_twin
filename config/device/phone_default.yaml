@@ -1,0 +1,24 @@
+name: phone_default
+namespace: /phone
+camera_rgb:
+  width: 1920
+  height: 1080
+  fps: 30.0
+  fx: 1450.0
+  fy: 1450.0
+  cx: 960.0
+  cy: 540.0
+  distortion_model: opencv_pinhole
+  distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+imu:
+  rate_hz: 200.0
+  read_gravity: true
+  accel_noise_std: [0.02, 0.02, 0.02]
+  gyro_noise_std: [0.002, 0.002, 0.002]
+  accel_bias: [0.0, 0.0, 0.0]
+  gyro_bias: [0.0, 0.0, 0.0]
+mount:
+  camera_frame: phone_camera
+  imu_frame: phone_imu
+  imu_translation_m: [0.0, 0.0, 0.01]
+  imu_rpy_deg: [0.0, 0.0, 0.0]

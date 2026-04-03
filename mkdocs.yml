@@ -1,0 +1,14 @@
+site_name: Calibration Simulator Blueprint
+nav:
+  - Home: README.md
+  - Goals: docs/00_system_goals.md
+  - Stack Selection: docs/01_stack_selection.md
+  - Architecture: docs/02_architecture.md
+  - Build Plan: docs/03_build_plan.md
+  - Scene Assets and Tags: docs/04_scene_assets_and_tags.md
+  - Robot Arm and Swapability: docs/05_robot_arm_and_swapability.md
+  - Sensors, Recording, Time Sync: docs/06_sensors_recording_and_time_sync.md
+  - APIs: docs/07_apis.md
+  - Motion Presets: docs/08_motion_presets.md
+  - Tag Detection Service: docs/09_tag_detection_service.md
+  - Repo Tree: docs/10_repo_tree.md

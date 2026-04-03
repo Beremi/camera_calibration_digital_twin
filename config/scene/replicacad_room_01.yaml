@@ -1,0 +1,18 @@
+name: replicacad_room_01
+asset:
+  source: replicacad
+  path: /opt/assets/replicacad/room_01.usd
+lighting:
+  mode: indoor_soft
+physics:
+  timestep_s: 0.0041666667  # 240 Hz
+anchors:
+  default_tag_wall: /World/Room/WestWall
+observer_cameras:
+  - name: room_wide
+    parent_prim: /World
+    translation_m: [2.8, 1.6, 1.4]
+    rpy_deg: [-15.0, 180.0, 0.0]
+    width: 1280
+    height: 720
+    fps: 20.0

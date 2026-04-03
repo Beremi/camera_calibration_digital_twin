@@ -1,0 +1,26 @@
+name: ur5e
+asset:
+  mode: urdf
+  path: /opt/robots/ur5e/ur5e.urdf
+frames:
+  base: base_link
+  ee: tool0
+  mount: tool0
+joints:
+  order:
+    - shoulder_pan_joint
+    - shoulder_lift_joint
+    - elbow_joint
+    - wrist_1_joint
+    - wrist_2_joint
+    - wrist_3_joint
+drive:
+  control_mode: position
+  stiffness: [600.0, 600.0, 500.0, 200.0, 100.0, 50.0]
+  damping: [60.0, 60.0, 50.0, 20.0, 10.0, 5.0]
+limits:
+  velocity: [3.0, 3.0, 3.0, 3.2, 3.2, 3.2]
+  effort: [150.0, 150.0, 150.0, 28.0, 28.0, 28.0]
+mount:
+  phone_mount_translation_m: [0.00, 0.00, 0.12]
+  phone_mount_rpy_deg: [0.0, -90.0, 0.0]

@@ -1,0 +1,16 @@
+defaults:
+  control_rate_hz: 120.0
+presets:
+  snap_yaw:
+    nominal_duration_s: 1.0
+    translation_amplitude_m: [0.01, 0.00, 0.00]
+    rotation_amplitude_deg: [0.0, 0.0, 12.0]
+  calib_sweep_basic:
+    nominal_duration_s: 5.0
+    translation_amplitude_m: [0.08, 0.05, 0.05]
+    rotation_amplitude_deg: [5.0, 12.0, 15.0]
+  vi_excitation:
+    nominal_duration_s: 10.0
+    translation_amplitude_m: [0.10, 0.08, 0.06]
+    rotation_amplitude_deg: [10.0, 18.0, 22.0]
+    frequencies_hz: [0.8, 1.1, 1.4, 0.7, 1.0, 1.3]

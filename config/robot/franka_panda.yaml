@@ -1,0 +1,27 @@
+name: franka_panda
+asset:
+  mode: usd
+  path: Isaac/Robots/Franka/franka_alt_fingers.usd
+frames:
+  base: panda_link0
+  ee: panda_hand
+  mount: panda_hand
+joints:
+  order:
+    - panda_joint1
+    - panda_joint2
+    - panda_joint3
+    - panda_joint4
+    - panda_joint5
+    - panda_joint6
+    - panda_joint7
+drive:
+  control_mode: position
+  stiffness: [800.0, 800.0, 800.0, 600.0, 250.0, 150.0, 50.0]
+  damping: [80.0, 80.0, 80.0, 60.0, 25.0, 15.0, 5.0]
+limits:
+  velocity: [2.1, 2.1, 2.1, 2.5, 2.5, 2.5, 2.5]
+  effort: [87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0]
+mount:
+  phone_mount_translation_m: [0.02, 0.00, 0.10]
+  phone_mount_rpy_deg: [0.0, -90.0, 90.0]

@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass
 from typing import Dict, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from calib_sim.motions.library import build_preset
@@ -73,6 +74,12 @@ class RunState:
 
 _SESSIONS: Dict[str, SessionState] = {}
 _RUNS: Dict[str, RunState] = {}
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    """Redirect the browser-friendly root path to the interactive docs."""
+    return RedirectResponse(url="/docs")
 
 
 @app.post("/v1/sessions")

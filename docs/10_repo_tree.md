@@ -1,174 +1,195 @@
 # 10 — Repository tree and module purpose map
 
+This file reflects the current checkpointed repo layout, not the earlier pure blueprint scaffold.
+
 ## Tree
 
 ```text
-calib_sim_blueprint/
+camera_calibration_digital_twin/
 ├── README.md
-├── mkdocs.yml
+├── .gitignore
 ├── pyproject.toml
 ├── assets/
-│   ├── apriltag36h11_id0.png
-│   ├── apriltag36h11_id0_canvas.png
-│   ├── apriltag36h11_id42.png
-│   └── apriltag36h11_id42_canvas.png
 ├── config/
+│   ├── camera/
 │   ├── device/
-│   │   └── phone_default.yaml
+│   ├── interactive/
+│   │   └── robot_arms/
 │   ├── motions/
-│   │   └── presets.yaml
 │   ├── robot/
-│   │   ├── franka_panda.yaml
-│   │   └── ur5e.yaml
 │   ├── scene/
-│   │   └── replicacad_room_01.yaml
 │   └── tags/
-│       └── apriltag36h11_single.yaml
 ├── docs/
+│   ├── README.md
+│   ├── app.md
+│   ├── checkpoint_01.md
+│   ├── img/checkpoint_01/
 │   ├── 00_system_goals.md
-│   ├── 01_stack_selection.md
-│   ├── 02_architecture.md
-│   ├── 03_build_plan.md
-│   ├── 04_scene_assets_and_tags.md
-│   ├── 05_robot_arm_and_swapability.md
-│   ├── 06_sensors_recording_and_time_sync.md
-│   ├── 07_apis.md
-│   ├── 08_motion_presets.md
-│   ├── 09_tag_detection_service.md
-│   └── 10_repo_tree.md
+│   ├── ...
+│   ├── 11_interactive_pose_estimation_pipeline.md
+│   └── 12_pose_estimation_investigation.md
 ├── src/
 │   └── calib_sim/
 │       ├── api/
-│       │   ├── rest.py
-│       │   └── ws.py
+│       │   └── rest.py
 │       ├── common/
-│       │   └── models.py
-│       ├── motions/
-│       │   ├── executor.py
-│       │   └── library.py
-│       ├── recording/
-│       │   └── rosbag_recorder.py
-│       ├── robot/
-│       │   ├── controller.py
-│       │   └── factory.py
-│       ├── scene/
-│       │   ├── loader.py
-│       │   └── tag_layout.py
-│       ├── sdk/
-│       │   └── client.py
-│       ├── sensors/
-│       │   ├── external_cameras.py
-│       │   └── phone_rig.py
+│       │   ├── models.py
+│       │   └── video.py
+│       ├── interactive/
+│       │   ├── analysis.py
+│       │   ├── camera_model.py
+│       │   ├── service.py
+│       │   ├── sim.py
+│       │   └── ui.py
 │       ├── sim/
 │       │   └── runtime.py
 │       └── tag_service/
 │           ├── detector.py
 │           └── service.py
 ├── tests/
-│   └── test_apriltag_detector.py
-└── tools/
-    └── generate_apriltag.py
+│   ├── test_camera_model.py
+│   ├── test_interactive_sim.py
+│   └── test_service_imports.py
+├── tools/
+│   ├── bootstrap_sim_env.sh
+│   └── generate_apriltag.py
+└── output/
+    └── interactive_runs/   # generated, intentionally git-ignored
 ```
 
-## File-by-file purpose
+## Top-Level Files
 
 ### `README.md`
 
-Top-level orientation.  
-Explains the chosen stack, architecture, and where to start.
+Current operator-facing entrypoint.
+It describes the checkpoint state, prerequisites, bootstrap script, and how to launch the browser app.
 
-### `mkdocs.yml`
+### `.gitignore`
 
-Optional site navigation if you later want to publish the docs as a mini internal handbook.
+Keeps the large generated sim outputs and local caches out of Git.
 
-### `config/*`
+### `pyproject.toml`
 
-Resolved experiment configuration.  
-These files are the main extensibility surface for non-core changes.
+Python package metadata and runtime dependencies for the current browser sim, detector service, and analysis pipeline.
 
-### `src/calib_sim/common/models.py`
+## Config Surface
 
-Shared dataclasses and schemas used across modules.  
-This file exists to stop your APIs from silently diverging.
+### `config/camera/`
 
-### `src/calib_sim/sim/runtime.py`
+Phone camera-model presets, including the current processed-video Pixel 9a profile and alternate exact/raw-like variants.
 
-Starts the simulator, owns the tick loop, and exposes hooks for loading scenes, stepping, and stopping.
+### `config/device/`
 
-### `src/calib_sim/scene/loader.py`
+Phone/device metadata presets.
+The current browser demos use `pixel_9a_phone.yaml`.
 
-Loads room assets and applies scene-level metadata such as lighting and anchor frames.
+### `config/interactive/`
 
-### `src/calib_sim/scene/tag_layout.py`
+Browser-sim scene entrypoints.
+This is the main place to switch between demo scenes, tags, observers, motion, and robot-arm presets.
 
-Creates single tags or boards from config and preserves the tag truth model.
+### `config/interactive/robot_arms/`
 
-### `src/calib_sim/robot/factory.py`
+Swapable arm presets for the browser app.
 
-Loads the robot from config and normalizes robot-specific asset details into a common interface.
+## Documentation
 
-### `src/calib_sim/robot/controller.py`
+### `docs/README.md`
 
-Wraps articulation control and exposes joint-space / task-space execution methods.
+Docs index and “what is current vs historical” guide.
 
-### `src/calib_sim/sensors/phone_rig.py`
+### `docs/app.md`
 
-Defines the phone-like RGB + IMU assembly and its topic namespace.
+Detailed browser app description: controls, outputs, configs, and current behavior.
 
-### `src/calib_sim/sensors/external_cameras.py`
+### `docs/checkpoint_01.md`
 
-Manages additional scene cameras and their publishers.
+Frozen checkpoint report copied from the current canonical run.
+This is the current checked-in analysis snapshot.
 
-### `src/calib_sim/recording/rosbag_recorder.py`
+### `docs/11_interactive_pose_estimation_pipeline.md`
 
-Centralizes bag-recording configuration and run artifact layout.
+Historical build-up of the browser pipeline.
+Useful for development history, but superseded by `checkpoint_01.md` for current metrics.
 
-### `src/calib_sim/motions/library.py`
+### `docs/12_pose_estimation_investigation.md`
 
-Contains named motion generators such as `snap_yaw`, `calib_sweep_basic`, and `vi_excitation`.
+Historical debugging note for the estimator.
+Still useful for understanding the failure modes that were fixed.
 
-### `src/calib_sim/motions/executor.py`
+## Runtime Code
 
-Takes a generated preset and feeds it into the robot controller while respecting timing.
+### `src/calib_sim/interactive/sim.py`
 
-### `src/calib_sim/api/rest.py`
+Main browser-sim runtime:
 
-Experiment-control API: sessions, runs, presets, artifact queries.
+- robot kinematics
+- primary phone camera render
+- observer cameras
+- scene props and tags
+- recording lifecycle
+- configuration reload
 
-### `src/calib_sim/api/ws.py`
+### `src/calib_sim/interactive/service.py`
 
-WebSocket status and preview metadata channel.
+FastAPI service that serves the browser UI and streams live sim snapshots over WebSocket.
 
-### `src/calib_sim/sdk/client.py`
+### `src/calib_sim/interactive/ui.py`
 
-Small Python client for notebooks, tests, and automation scripts.
+HTML/JS dashboard generator for the browser app.
+
+### `src/calib_sim/interactive/camera_model.py`
+
+TOML-driven phone camera model used by rendering and analysis.
+
+### `src/calib_sim/interactive/analysis.py`
+
+Offline replay, re-detection, single-tag fitting, joint all-points fitting, and report generation.
 
 ### `src/calib_sim/tag_service/detector.py`
 
-Actual AprilTag detection logic.  
-This is the most directly reusable module on both simulated and real video.
+OpenCV AprilTag detector wrapper with 5-point output and optional pose estimation.
 
 ### `src/calib_sim/tag_service/service.py`
 
-FastAPI wrapper exposing frame/video detection endpoints.
+FastAPI wrapper for the tag detector service.
 
-### `tests/test_apriltag_detector.py`
+### `src/calib_sim/api/rest.py`
 
-Smoke test to prove the detector sees a generated tag.
+Small scaffold orchestration API that still exists alongside the browser app.
+
+### `src/calib_sim/sim/runtime.py`
+
+Isaac Sim runtime scaffold.
+Important to keep, but it is not the current primary runnable path.
+
+## Tests
+
+### `tests/test_interactive_sim.py`
+
+End-to-end coverage for the browser sim, recording flow, analysis artifacts, and current preset switching.
+
+### `tests/test_camera_model.py`
+
+Camera-model and measurement-shape checks.
+
+### `tests/test_service_imports.py`
+
+Import and service smoke tests for the FastAPI entrypoints.
+
+## Tools
+
+### `tools/bootstrap_sim_env.sh`
+
+Bootstraps `.venv` and installs the current runtime/test dependencies.
 
 ### `tools/generate_apriltag.py`
 
-Convenience script to generate marker images from the selected dictionary.
+Generates canonical marker images used by the detector tests and assets.
 
-## Commenting policy
+## Generated Output
 
-All code files in the scaffold are commented around:
+### `output/interactive_runs/`
 
-- module purpose
-- public interfaces
-- simulator-specific assumptions
-- extension points
-- “replace this with real Isaac code” boundaries
-
-That is deliberate.  
-The goal is not just to create files, but to make the codebase handoff-friendly.
+Recorded runs and analysis artifacts from the browser sim.
+This directory is intentionally git-ignored because it can grow quickly; the repository keeps only the curated checkpoint copy in `docs/`.

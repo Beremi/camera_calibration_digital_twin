@@ -1,0 +1,46 @@
+name = "pixel_9a_main"
+notes = "Derived from Pixel 9a Camera2 metadata dump. This preset models the processed phone video path, which is a better match for app-recorded MP4 output than a synthetic pre-correction raw sensor image."
+
+[device]
+manufacturer = "Google"
+model = "Pixel 9a"
+logical_camera_id = "0"
+
+[sensor]
+active_array_width_px = 4000
+active_array_height_px = 3000
+orientation_deg = 90
+
+[optics]
+focal_length_mm = 4.53
+focus_distance_diopters = 0.2650956
+hyperfocal_distance_diopters = 0.2650956
+target_frames_per_second = 30
+timestamp_source = "REALTIME"
+
+[intrinsics.active_array]
+fx_px = 2694.107
+fy_px = 2694.107
+cx_px = 2000.6089
+cy_px = 1507.567
+skew_px = 0.0
+
+[distortion]
+model = "opencv_brown_conrady"
+coefficients = [0.15084998, -0.44805366, 0.38709834, 0.0, 0.0]
+
+[video_mode]
+width_px = 1920
+height_px = 1080
+crop_mode = "center_crop"
+
+[rendering]
+projection_model = "pixel_processed_video_default"
+apply_lens_distortion_in_render = false
+
+[camera_pose_estimation]
+pattern_half_extent_m = 0.05
+measurement_unit = "mm"
+measurement_order = ["center", "top_right", "bottom_right", "bottom_left", "top_left"]
+y_axis = "up"
+undistort_before_export = false

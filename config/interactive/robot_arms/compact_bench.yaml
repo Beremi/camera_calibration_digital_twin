@@ -1,0 +1,12 @@
+preset_id: compact_bench
+name: compact_bench
+label: Compact Bench Arm
+base_position_m: [0.00, 1.15, 0.16]
+shoulder_height_m: 0.18
+link_lengths_m: [0.30, 0.25, 0.18]
+initial_servos_deg: [0.0, 28.0, -18.0]
+servo_limits_deg:
+  - [-45.0, 45.0]
+  - [-10.0, 78.0]
+  - [-65.0, 65.0]
+servo_speed_deg_s: [90.0, 110.0, 130.0]

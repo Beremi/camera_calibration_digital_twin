@@ -1,0 +1,12 @@
+preset_id: franka_tabletop
+name: franka_tabletop
+label: Franka-Style Tabletop Arm
+base_position_m: [0.00, 1.08, 0.10]
+shoulder_height_m: 0.26
+link_lengths_m: [0.28, 0.25, 0.16]
+initial_servos_deg: [-10.0, 40.0, -36.0]
+servo_limits_deg:
+  - [-65.0, 65.0]
+  - [-25.0, 88.0]
+  - [-95.0, 70.0]
+servo_speed_deg_s: [80.0, 104.0, 126.0]

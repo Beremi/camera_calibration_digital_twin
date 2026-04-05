@@ -1,0 +1,59 @@
+name: browser_game_demo
+label: Classic Wall Scan Demo
+device_config_path: config/device/pixel_9a_phone.yaml
+camera_model_toml_path: config/camera/pixel_9a_main.toml
+output_dir: output/interactive_runs
+stream_fps: 12.0
+primary_camera:
+  width: 960
+  height: 540
+  fov_deg: 72.0
+scene:
+  wall_y_m: 0.0
+  wall_width_m: 2.6
+  wall_height_m: 1.8
+  look_at_m: [0.0, 0.0, 1.05]
+robot:
+  preset_path: config/interactive/robot_arms/compact_bench.yaml
+controls:
+  initial_servos_deg: [0.0, 28.0, -18.0]
+auto_demo:
+  enabled_by_default: true
+  mode: channels
+  channels:
+    - offset_deg: 0.0
+      amplitude_deg: 22.0
+      frequency_hz: 0.075
+      phase_deg: 0.0
+    - offset_deg: 30.0
+      amplitude_deg: 17.0
+      frequency_hz: 0.055
+      phase_deg: 80.0
+    - offset_deg: -16.0
+      amplitude_deg: 29.0
+      frequency_hz: 0.095
+      phase_deg: 160.0
+analysis:
+  auto_run_on_stop: true
+tags:
+  - tag_id: 0
+    family: 36h11
+    size_m: 0.10
+    position_m: [-0.36, 0.0, 0.98]
+  - tag_id: 42
+    family: 36h11
+    size_m: 0.10
+    position_m: [0.36, 0.0, 1.22]
+observer_cameras:
+  - name: room_wide
+    position_m: [1.55, 2.85, 1.72]
+    look_at_m: [0.0, 0.95, 1.00]
+    width: 640
+    height: 360
+    fov_deg: 54.0
+  - name: side_view
+    position_m: [-2.10, 1.45, 1.32]
+    look_at_m: [0.0, 0.95, 0.98]
+    width: 640
+    height: 360
+    fov_deg: 48.0

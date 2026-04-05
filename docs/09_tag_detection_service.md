@@ -67,7 +67,7 @@ Output:
   "detections": [
     {
       "family": "36h11",
-      "id": 42,
+      "tag_id": 42,
       "corners_xy_clockwise": [
         [412.2, 181.0],
         [507.8, 184.4],
@@ -82,7 +82,8 @@ Output:
         [408.1, 276.2],
         [458.0, 230.3]
       ],
-      "pose_camera": null,
+      "pose_camera_rvec": null,
+      "pose_camera_tvec": null,
       "quality": {
         "detector_backend": "opencv_aruco_apriltag36h11"
       }

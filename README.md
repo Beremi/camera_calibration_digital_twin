@@ -1,132 +1,174 @@
-# Calibration Simulator Blueprint (Python + CUDA)
+# Camera Calibration Digital Twin
 
-This repository is a **design blueprint + starter scaffold** for a simulation-first calibration bench aimed at:
+This repository is now in a hybrid state:
 
-- a **swapable robot arm** with servo-like joint drives
-- a **phone-like recording rig** mounted to the tool flange that publishes **RGB + IMU**
-- additional **scene cameras** with synchronized recording
-- **AprilTag 2 / 36h11** fiducials placed in the environment
-- a **real-time control path** for sending robot actions while streaming sensor data
-- a separate **tag-detection service** that returns **4 corners + center + tag id**
-- a recording/export path suitable for **offline calibration tooling** and regression tests
+- a runnable browser-based calibration simulator is the primary working target
+- a richer Isaac Sim based runtime is still scaffolded, not production-ready
 
-The blueprint is intentionally opinionated. It chooses a stack that minimizes glue code for robotics work instead of optimizing for a purely open-source simulator core.
+The current frozen checkpoint is documented in [docs/checkpoint_01.md](docs/checkpoint_01.md). It corresponds to the analysis run `output/interactive_runs/run_20260405_141532` and represents the first checkpoint where the interactive app, recording pipeline, and pose fitting are all working together cleanly enough to preserve.
 
-## Recommended baseline stack
+## Checkpoint 01 State
 
-| Layer | Choice | Why |
-|---|---|---|
-| Simulator | **NVIDIA Isaac Sim 5.1** | Stable baseline with Python scripting, camera sensors, IMU sensors, ROS 2 bridge, robot assets, URDF/USD workflows, and GPU-first sensor simulation. |
-| Open-source room assets | **ReplicaCAD** as the default room source, optionally enriched with **Poly Haven** props/materials/HDRIs | ReplicaCAD gives furnished indoor environments under CC BY 4.0; Poly Haven is CC0 and useful for visual enrichment. |
-| Default robot arm | **Franka Panda** | First-class manipulator path in Isaac Sim docs; good default for a research scaffold. |
-| Alternative robot arms | **UR5/UR10e or any URDF/USD articulation** | Isaac Sim supports URDF import and provides manipulator tutorials. |
-| Phone-like sensor rig | One RGB camera + one IMU rigidly mounted under `tool0` | Directly matches your “mobile attached to robot arm” requirement. |
-| Data plane | **ROS 2** | Native Isaac bridge for camera and IMU publishers; easy integration with robotics tooling. |
-| Control/orchestration plane | **FastAPI + WebSockets** | Human-readable API for experiment control, run lifecycle, and UI integration. |
-| Recording | **rosbag2 / MCAP** + sidecar MP4/JSON metadata | Good default for replay, regression tests, and interoperability. |
-| Tag detector service | **OpenCV aruco/AprilTag path** using `DICT_APRILTAG_36h11` | Simple Python packaging, canonical marker generation, and AprilTag-family support. |
+Checkpoint 01 represents this current repo state:
 
-## Why this specific baseline
+- browser app with live phone view, observer views, servo control, scene selection, and robot-arm selection
+- smooth tabletop demo with the arm base at table height and cube-top calibration patterns
+- raw recording of phone video, IMU-like telemetry, camera truth, and per-frame metadata
+- offline AprilTag re-detection and pose fitting
+- continuity-aware single-tag estimation plus accurate joint all-points trajectory fitting
 
-Isaac Sim is the most practical fit for this project because the official documentation already exposes the exact subsystems you need: Python scripting, articulated robot control, camera sensors, IMU sensors, ROS 2 publication, robot asset workflows, and URDF import.[isaac-what][isaac-cam][isaac-imu][isaac-ros2][isaac-articulation][isaac-urdf]  
-I am explicitly recommending **Isaac Sim 5.1 as the build target** because the Isaac Sim 6.0 documentation currently marks 6.0 as an **Early Developer Release** with incomplete documentation and GA artifacts not yet available at that page.[isaac-6-edr]
+Checkpoint 01 summary numbers from [docs/checkpoint_01.md](docs/checkpoint_01.md):
 
-ReplicaCAD is a strong default for room assets because it is a furnished indoor dataset intended for interactive simulation and released under **CC BY 4.0**.[replicacad]  
-If you need extra props, materials, or lighting environments, Poly Haven is useful because its assets are published as **CC0**.[polyhaven]
+- single-tag mean position error: `0.00419 m`
+- single-tag median position error: `0.00230 m`
+- single-tag max position error: `0.12990 m`
+- joint all-points mean position error: `0.00057 m`
+- joint all-points max position error: `0.00630 m`
 
-For the fiducial layer, OpenCV exposes built-in AprilTag dictionaries including **`DICT_APRILTAG_36h11`**, can **generate canonical marker images**, and includes an AprilTag-based corner refinement mode.[opencv-aruco]  
-Kalibr’s target guidance is also relevant to the simulator design: for calibration boards, it recommends **Aprilgrid** because partial visibility is acceptable and the pose is fully resolved without flips.[kalibr-targets]
+Those results are for the current processed-video Pixel 9a camera model and the tabletop challenge scene.
 
-## Architecture at a glance
+## Prerequisites
 
-```text
-┌──────────────────────────────────────────────────────────────────────┐
-│                     Isaac Sim 5.1 Runtime (Python)                  │
-│                                                                      │
-│  Room Scene  ─┐   AprilTags/Boards ─┐   Robot Arm + Tool Mount ─┐   │
-│               │                     │                            │   │
-│               └────────────┬────────┴───────────────┬────────────┘   │
-│                            │                        │                │
-│                    Phone Rig (RGB + IMU)      Scene Cameras         │
-│                            │                        │                │
-│                            └────────────┬───────────┘                │
-│                                         │                            │
-│                                 ROS 2 Bridge                         │
-└───────────────────────────────┬─────────┬────────────────────────────┘
-                                │         │
-                     sensor topics         robot control topics/services
-                                │         │
-                      ┌─────────▼─────────▼─────────┐
-                      │     FastAPI Orchestrator    │
-                      │ sessions / runs / presets   │
-                      │ WebSocket events / control  │
-                      └─────────┬─────────┬─────────┘
-                                │         │
-                                │         └─────────────► Calibration client / SDK
-                                │
-                                └───────────────────────► rosbag2 (MCAP) recorder
+To run the current browser sim you need:
 
-                      ┌────────────────────────────────┐
-                      │   AprilTag Detection Service   │
-                      │  live frame / video endpoints  │
-                      │ returns id + 4 corners + center│
-                      └────────────────────────────────┘
+- Python `3.10+`
+- a platform where `opencv-python`, `jax`, and `fastapi` install normally
+- a modern browser
+
+You do not need Isaac Sim for the current browser checkpoint.
+
+## Bootstrap The Environment
+
+Use the bootstrap script:
+
+```bash
+./tools/bootstrap_sim_env.sh
 ```
 
-## What this repo contains
+This creates `.venv` if needed and installs the project plus test/runtime dependencies.
 
-- **Markdown documentation tree** describing how to build the simulator
-- **Config examples** for robot, phone rig, scene, motions, and tags
-- **Python scaffold** with comments/docstrings for the major modules
-- **Implemented AprilTag detector module** using OpenCV’s AprilTag dictionary path
-- **Example generated tag images** for `36h11`
+If you want to activate the environment manually:
 
-## Documentation map
+```bash
+source .venv/bin/activate.fish
+```
 
-- [`docs/00_system_goals.md`](docs/00_system_goals.md) — requirements, scope, and success criteria
-- [`docs/01_stack_selection.md`](docs/01_stack_selection.md) — why this stack was chosen
-- [`docs/02_architecture.md`](docs/02_architecture.md) — system design and component boundaries
-- [`docs/03_build_plan.md`](docs/03_build_plan.md) — detailed implementation sequence
-- [`docs/04_scene_assets_and_tags.md`](docs/04_scene_assets_and_tags.md) — rooms, tags, asset pipeline
-- [`docs/05_robot_arm_and_swapability.md`](docs/05_robot_arm_and_swapability.md) — robot abstraction and phone mount
-- [`docs/06_sensors_recording_and_time_sync.md`](docs/06_sensors_recording_and_time_sync.md) — cameras, IMU, bags, metadata
-- [`docs/07_apis.md`](docs/07_apis.md) — ROS 2 topics, REST API, WebSocket events, SDK contract
-- [`docs/08_motion_presets.md`](docs/08_motion_presets.md) — predefined 1/2/5/10 s motion families
-- [`docs/09_tag_detection_service.md`](docs/09_tag_detection_service.md) — live and offline AprilTag detection service
-- [`docs/10_repo_tree.md`](docs/10_repo_tree.md) — file-by-file purpose map
+or in Bash/Zsh:
 
-## Build philosophy
+```bash
+. .venv/bin/activate
+```
 
-This project should be developed in **layers**:
+You can also skip activation and run the venv Python directly.
 
-1. **Simulator shell**: room + robot + phone rig + one scene camera  
-2. **Sensor truth path**: RGB, CameraInfo, IMU, TF, joint states  
-3. **Recorder path**: bag + video sidecars + run metadata  
-4. **Robot action path**: preset motions + direct command API  
-5. **Tag detection service**: offline video first, then live stream  
-6. **Validation**: compare estimated calibration results against simulator ground truth  
+## Run The Interactive Sim
 
-That order matters. If you try to build everything at once, debugging becomes expensive.
+```bash
+./tools/bootstrap_sim_env.sh
+.venv/bin/python -m uvicorn calib_sim.interactive.service:app --reload --port 8002
+```
 
-## Notes on the “small tag, visible from afar” requirement
+Then open:
 
-For your stated use case, a **single large 10 cm AprilTag** is usually more useful than a dense calibration board when the camera may be far away and fine detail is wasted.  
-However, for **camera–IMU calibration datasets** you will often still want the option to swap in a **sparse AprilGrid** because it gives multiple correspondences while keeping the target fully orientation-resolved.[kalibr-targets]  
-The blueprint therefore supports **both**:
+```text
+http://127.0.0.1:8002/
+```
 
-- **single-tag mode** for long-range, simple pose estimation
-- **board mode** for richer calibration sequences and multi-camera testing
+The current main challenge scene is:
 
-## Sources
+- `config/interactive/tabletop_grab_challenge.yaml`
 
-[isaac-what]: https://docs.isaacsim.omniverse.nvidia.com/
-[isaac-cam]: https://docs.isaacsim.omniverse.nvidia.com/5.1.0/sensors/isaacsim_sensors_camera.html
-[isaac-imu]: https://docs.isaacsim.omniverse.nvidia.com/4.5.0/sensors/isaacsim_sensors_physics_imu.html
-[isaac-ros2]: https://docs.isaacsim.omniverse.nvidia.com/6.0.0/ros2_tutorials/ros2_landing_page.html
-[isaac-articulation]: https://docs.isaacsim.omniverse.nvidia.com/4.5.0/robot_simulation/articulation_controller.html
-[isaac-urdf]: https://docs.isaacsim.omniverse.nvidia.com/5.1.0/importer_exporter/import_urdf.html
-[isaac-6-edr]: https://docs.isaacsim.omniverse.nvidia.com/6.0.0/installation/index.html
-[replicacad]: https://aihabitat.org/datasets/replica_cad/
-[polyhaven]: https://polyhaven.com/
-[opencv-aruco]: https://docs.opencv.org/4.x/de/d67/group__objdetect__aruco.html
-[kalibr-targets]: https://github.com/ethz-asl/kalibr/wiki/calibration-targets
+The browser app details are documented in [docs/app.md](docs/app.md).
+
+## Run Tests
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+## Optional Services
+
+### Tag Detection Service
+
+```bash
+.venv/bin/python -m uvicorn calib_sim.tag_service.service:app --reload --port 8000
+```
+
+Open:
+
+- `http://127.0.0.1:8000/docs`
+- `http://127.0.0.1:8000/health`
+
+### Scaffold Orchestration API
+
+```bash
+.venv/bin/python -m uvicorn calib_sim.api.rest:app --reload --port 8001
+```
+
+Open:
+
+- `http://127.0.0.1:8001/docs`
+
+## What The App Can Do
+
+At a high level, the browser app gives you:
+
+- a robot-mounted phone-camera view with realtime detections
+- IMU-like accel and gyro readouts
+- servo target control plus automatic demo motion
+- multiple observer cameras
+- scene and robot-arm swapping from the UI
+- raw recording and offline analysis
+
+The detailed behavior, configs, and artifacts are described in [docs/app.md](docs/app.md).
+
+## Current Camera And Scene Presets
+
+Main phone-camera presets:
+
+- `config/camera/pixel_9a_main.toml`
+- `config/camera/pixel_9a_raw_distorted.toml`
+- `config/camera/pixel_9a_camera_pose_estimation_exact.toml`
+
+Main device preset:
+
+- `config/device/pixel_9a_phone.yaml`
+
+Interactive scenes:
+
+- `config/interactive/browser_game_demo.yaml`
+- `config/interactive/tabletop_grab_challenge.yaml`
+
+Robot-arm presets:
+
+- `config/interactive/robot_arms/compact_bench.yaml`
+- `config/interactive/robot_arms/long_reach_tabletop.yaml`
+- `config/interactive/robot_arms/franka_tabletop.yaml`
+
+## Repo Status
+
+What is working now:
+
+- browser sim runtime under `src/calib_sim/interactive/`
+- FastAPI-based browser service
+- AprilTag detector service
+- recording and analysis pipeline
+- checkpoint-quality documentation in `docs/`
+
+What is still scaffold-level:
+
+- Isaac Sim runtime integration in `src/calib_sim/sim/runtime.py`
+- broader ROS/Isaac system from the original blueprint docs
+
+## Documentation
+
+Start with:
+
+- [docs/README.md](docs/README.md)
+- [docs/checkpoint_01.md](docs/checkpoint_01.md)
+- [docs/app.md](docs/app.md)
+
+Important notes:
+
+- `docs/11_interactive_pose_estimation_pipeline.md` and `docs/12_pose_estimation_investigation.md` are historical development notes. They remain valuable, but their intermediate metrics are superseded by Checkpoint 01.
+- generated simulator runs under `output/interactive_runs/` are intentionally git-ignored; the canonical checked-in snapshot is the docs checkpoint.

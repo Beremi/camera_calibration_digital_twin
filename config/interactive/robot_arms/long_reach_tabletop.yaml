@@ -1,0 +1,12 @@
+preset_id: long_reach_tabletop
+name: long_reach_tabletop
+label: Long-Reach Tabletop Arm
+base_position_m: [0.00, 1.08, 0.72]
+shoulder_height_m: 0.08
+link_lengths_m: [0.34, 0.30, 0.22]
+initial_servos_deg: [-36.0, 60.0, -56.0]
+servo_limits_deg:
+  - [-55.0, 55.0]
+  - [-12.0, 86.0]
+  - [-82.0, 76.0]
+servo_speed_deg_s: [66.0, 88.0, 108.0]

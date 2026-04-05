@@ -8,11 +8,18 @@ from pathlib import Path
 import cv2
 import numpy as np
 from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.responses import RedirectResponse
 
 from calib_sim.tag_service.detector import AprilTag36h11Detector
 
 app = FastAPI(title="AprilTag Detection Service", version="0.1.0")
 detector = AprilTag36h11Detector()
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    """Redirect the browser-friendly root path to the interactive docs."""
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/health")

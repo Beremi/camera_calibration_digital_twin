@@ -21,6 +21,17 @@ def _camera_matrix(fx: float, fy: float, cx: float, cy: float) -> np.ndarray:
     return np.array([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]], dtype=np.float64)
 
 
+def _quad_diagonal_intersection(points_xy: np.ndarray) -> np.ndarray:
+    """Projective center of a quadrilateral from the diagonal intersection."""
+    p0, p1, p2, p3 = np.asarray(points_xy, dtype=np.float64).reshape(4, 2)
+    system = np.column_stack((p2 - p0, -(p3 - p1)))
+    rhs = p1 - p0
+    if abs(float(np.linalg.det(system))) < 1e-9:
+        return np.mean(points_xy, axis=0)
+    params = np.linalg.solve(system, rhs)
+    return p0 + params[0] * (p2 - p0)
+
+
 class AprilTag36h11Detector:
     """Detector for the OpenCV AprilTag 36h11 dictionary.
 
@@ -70,7 +81,7 @@ class AprilTag36h11Detector:
         ids = ids.flatten().tolist()
         for tag_id, tag_corners in zip(ids, corners):
             pts = np.asarray(tag_corners, dtype=np.float64).reshape(4, 2)
-            center = pts.mean(axis=0)
+            center = _quad_diagonal_intersection(pts)
             points5 = np.vstack([pts, center])
 
             rvec_tuple = None

@@ -128,7 +128,7 @@ Attach the phone rig.
 
 ```json
 {
-  "device_config_path": "config/device/phone_default.yaml"
+  "device_config_path": "config/device/pixel_9a_phone.yaml"
 }
 ```
 
@@ -218,6 +218,22 @@ Pushes low-bandwidth status events such as:
 - publisher health warnings
 - detector service health
 
+---
+
+# D. Current browser-sim service
+
+The currently implemented operator-facing app lives in `src/calib_sim/interactive/service.py`.
+
+Useful endpoints:
+
+| Path | Purpose |
+|---|---|
+| `/` | browser dashboard |
+| `/health` | current config and service status |
+| `/v1/config` | active interactive config |
+| `/v1/catalog` | scene and robot-arm preset catalog |
+| `/ws/live` | live sim snapshots and control messages |
+
 ### Example message
 
 ```json
@@ -250,7 +266,7 @@ client = CalibSimClient("http://localhost:8000")
 session = client.create_session("demo", headless=True)
 client.load_scene(session.session_id, "config/scene/replicacad_room_01.yaml")
 client.load_robot(session.session_id, "config/robot/franka_panda.yaml")
-client.attach_phone_rig(session.session_id, "config/device/phone_default.yaml")
+client.attach_phone_rig(session.session_id, "config/device/pixel_9a_phone.yaml")
 client.spawn_tags(session.session_id, "config/tags/apriltag36h11_single.yaml")
 run = client.create_run(session.session_id, "vi_run", record=True)
 client.execute_preset(run.run_id, "vi_excitation", duration_s=5.0)

@@ -1,0 +1,2 @@
+"""Interactive browser-driven simulator."""
+

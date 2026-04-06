@@ -5,7 +5,7 @@ This repository is now in a hybrid state:
 - a runnable browser-based calibration simulator is the primary working target
 - a richer Isaac Sim based runtime is still scaffolded, not production-ready
 
-The current frozen checkpoint is documented in [docs/checkpoint_01.md](docs/checkpoint_01.md). It corresponds to the analysis run `output/interactive_runs/run_20260405_141532` and represents the first checkpoint where the interactive app, recording pipeline, and pose fitting are all working together cleanly enough to preserve.
+The current frozen checkpoint is documented in [docs/checkpoint_01.md](docs/checkpoint_01.md). It corresponds to the corrected analysis run `output/interactive_runs/run_20260406_083611` and represents the first checkpoint where the interactive app, recording pipeline, visual pose fitting, and IMU trajectory reconstruction are all working together cleanly enough to preserve.
 
 ## Checkpoint 01 State
 
@@ -16,6 +16,7 @@ Checkpoint 01 represents this current repo state:
 - raw recording of phone video, IMU-like telemetry, camera truth, and per-frame metadata
 - offline AprilTag re-detection and pose fitting
 - continuity-aware single-tag estimation plus accurate joint all-points trajectory fitting
+- corrected exact IMU logging plus IMU-only trajectory reconstruction anchored to ground truth start pose
 
 Checkpoint 01 summary numbers from [docs/checkpoint_01.md](docs/checkpoint_01.md):
 
@@ -24,8 +25,10 @@ Checkpoint 01 summary numbers from [docs/checkpoint_01.md](docs/checkpoint_01.md
 - single-tag max position error: `0.12990 m`
 - joint all-points mean position error: `0.00057 m`
 - joint all-points max position error: `0.00630 m`
+- IMU-only mean position error: `2.16e-07 m`
+- IMU-only max position error: `7.15e-07 m`
 
-Those results are for the current processed-video Pixel 9a camera model and the tabletop challenge scene.
+Those results are for the current processed-video Pixel 9a camera model, the tabletop challenge scene, and the corrected IMU recording path.
 
 ## Prerequisites
 
@@ -166,6 +169,7 @@ Start with:
 
 - [docs/README.md](docs/README.md)
 - [docs/checkpoint_01.md](docs/checkpoint_01.md)
+- [docs/intermediate_report/README.md](docs/intermediate_report/README.md)
 - [docs/app.md](docs/app.md)
 
 Important notes:

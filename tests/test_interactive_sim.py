@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import cv2
@@ -227,6 +228,8 @@ def test_interactive_recording_stop_runs_analysis(tmp_path: Path) -> None:
     assert (active_run_dir / "analysis" / "report.md").exists()
     assert (active_run_dir / "analysis" / "summary.json").exists()
     assert (active_run_dir / "analysis" / "joint_world_estimates.jsonl").exists()
+    assert (active_run_dir / "analysis" / "imu_trajectory_estimates.jsonl").exists()
+    assert (active_run_dir / "analysis" / "imu_trajectory_report.md").exists()
     assert (active_run_dir / "analysis" / "per_tag_summary.json").exists()
     assert (active_run_dir / "analysis" / "per_tag").is_dir()
     assert (active_run_dir / "analysis" / "single_pattern_report.md").exists()
@@ -242,13 +245,22 @@ def test_interactive_recording_stop_runs_analysis(tmp_path: Path) -> None:
     assert (active_run_dir / "analysis" / "position_error_timeline.png").exists()
     assert (active_run_dir / "analysis" / "reprojection_timeline.png").exists()
     assert (active_run_dir / "analysis" / "optimizer_loss_trace.png").exists()
+    assert (active_run_dir / "analysis" / "imu_position_error_timeline.png").exists()
+    assert (active_run_dir / "analysis" / "imu_rotation_error_timeline.png").exists()
     assert (active_run_dir / "analysis" / "world_pose_by_tag" / "camera_world_x_m.png").exists()
     assert (active_run_dir / "analysis" / "world_pose_by_tag" / "camera_world_y_m.png").exists()
     assert (active_run_dir / "analysis" / "world_pose_by_tag" / "camera_world_z_m.png").exists()
     assert (active_run_dir / "analysis" / "world_pose_by_tag" / "camera_world_rx_deg.png").exists()
     assert (active_run_dir / "analysis" / "world_pose_by_tag" / "camera_world_ry_deg.png").exists()
     assert (active_run_dir / "analysis" / "world_pose_by_tag" / "camera_world_rz_deg.png").exists()
+    assert (active_run_dir / "analysis" / "imu_world_pose" / "camera_world_x_m.png").exists()
+    assert (active_run_dir / "analysis" / "imu_world_pose" / "camera_world_y_m.png").exists()
+    assert (active_run_dir / "analysis" / "imu_world_pose" / "camera_world_z_m.png").exists()
+    assert (active_run_dir / "analysis" / "imu_world_pose" / "camera_world_rx_deg.png").exists()
+    assert (active_run_dir / "analysis" / "imu_world_pose" / "camera_world_ry_deg.png").exists()
+    assert (active_run_dir / "analysis" / "imu_world_pose" / "camera_world_rz_deg.png").exists()
     report = (active_run_dir / "analysis" / "report.md").read_text(encoding="utf-8")
+    imu_trajectory_report = (active_run_dir / "analysis" / "imu_trajectory_report.md").read_text(encoding="utf-8")
     per_tag_reports = list((active_run_dir / "analysis" / "per_tag").glob("tag_*/report.md"))
     single_pattern_report = (active_run_dir / "analysis" / "single_pattern_report.md").read_text(encoding="utf-8")
     worst_single_pattern_report = (active_run_dir / "analysis" / "worst_single_pattern_report.md").read_text(encoding="utf-8")
@@ -261,6 +273,7 @@ def test_interactive_recording_stop_runs_analysis(tmp_path: Path) -> None:
     assert "## Representative Single-Pattern Solve" in report
     assert "## Per-Pattern Breakdown" in report
     assert "## World-Pose Components By Tag" in report
+    assert "## IMU Trajectory Reconstruction" in report
     assert "joint solve over all visible tag points" in report
     assert "### Units And Scale" in report
     assert "### Pose Comparison Against Ground Truth" in report
@@ -278,8 +291,18 @@ def test_interactive_recording_stop_runs_analysis(tmp_path: Path) -> None:
     assert "## Newton Convergence On Perfect Synthetic Points" in synthetic_single_pattern_report
     assert "| alpha |" in synthetic_single_pattern_report
     assert "| gt - cam pos [m] |" in synthetic_single_pattern_report
+    assert "# IMU Trajectory Reconstruction Report" in imu_trajectory_report
+    assert "## Summary" in imu_trajectory_report
+    assert "## Error Timelines" in imu_trajectory_report
+    assert "## World-Pose Components" in imu_trajectory_report
+    assert "`true_start_velocity`" in imu_trajectory_report
+    assert "Initial velocity source: `logged_camera_gt_velocity`" in imu_trajectory_report
     assert per_tag_reports
     assert "Separate Estimation Report" in per_tag_reports[0].read_text(encoding="utf-8")
     assert "||grad||" not in report
     assert "||step||" not in report
+    summary = json.loads((active_run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
+    assert summary["imu_trajectory"]["main_mode"] == "true_start_velocity"
+    assert summary["imu_trajectory"]["initial_velocity_source"] == "logged_camera_gt_velocity"
+    assert "true_start_velocity" in summary["imu_trajectory"]["modes"]
     assert not list((active_run_dir / "analysis").glob("*.finalizing.mp4"))

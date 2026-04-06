@@ -670,7 +670,7 @@ class InteractiveCalibrationSim:
         self._imu_csv_handle.write("tick_index,sim_time_s,ax_mps2,ay_mps2,az_mps2,gx_rps,gy_rps,gz_rps\n")
         self._camera_csv_handle = (self.active_run_dir / "camera_gt.csv").open("w", encoding="utf-8")
         self._camera_csv_handle.write(
-            "tick_index,sim_time_s,cx_world_m,cy_world_m,cz_world_m,"
+            "tick_index,sim_time_s,cx_world_m,cy_world_m,cz_world_m,vx_world_mps,vy_world_mps,vz_world_mps,"
             "r00,r01,r02,r10,r11,r12,r20,r21,r22,servo0_deg,servo1_deg,servo2_deg\n"
         )
         self._recording_frame_index = 0
@@ -992,10 +992,10 @@ class InteractiveCalibrationSim:
             files["observer_views"] = [observer["name"] for observer in observer_frames]
 
         if self._imu_csv_handle is not None:
-            accel = snapshot["imu"]["accel_mps2"]
-            gyro = snapshot["imu"]["gyro_rps"]
+            accel = self._imu_accel_body_mps2
+            gyro = self._imu_gyro_body_rps
             self._imu_csv_handle.write(
-                f"{snapshot['tick_index']},{snapshot['sim_time_s']:.6f},"
+                f"{self.tick_index},{self.time_s:.9f},"
                 f"{accel[0]:.9f},{accel[1]:.9f},{accel[2]:.9f},"
                 f"{gyro[0]:.9f},{gyro[1]:.9f},{gyro[2]:.9f}\n"
             )
@@ -1003,9 +1003,11 @@ class InteractiveCalibrationSim:
         if self._camera_csv_handle is not None:
             camera_world_pose = snapshot["phone_view"]["ground_truth"]["camera_world_pose"]
             rotation = camera_world_pose["rotation_cw"]
+            velocity_world_mps = self._prev_tool_velocity if self._prev_tool_velocity is not None else np.zeros(3, dtype=np.float64)
             self._camera_csv_handle.write(
-                f"{snapshot['tick_index']},{snapshot['sim_time_s']:.6f},"
+                f"{self.tick_index},{self.time_s:.9f},"
                 f"{camera_world_pose['position_m'][0]:.9f},{camera_world_pose['position_m'][1]:.9f},{camera_world_pose['position_m'][2]:.9f},"
+                f"{velocity_world_mps[0]:.9f},{velocity_world_mps[1]:.9f},{velocity_world_mps[2]:.9f},"
                 f"{rotation[0]:.9f},{rotation[1]:.9f},{rotation[2]:.9f},"
                 f"{rotation[3]:.9f},{rotation[4]:.9f},{rotation[5]:.9f},"
                 f"{rotation[6]:.9f},{rotation[7]:.9f},{rotation[8]:.9f},"
@@ -1013,13 +1015,16 @@ class InteractiveCalibrationSim:
             )
 
         log_entry = {
-            "sim_time_s": snapshot["sim_time_s"],
-            "tick_index": snapshot["tick_index"],
+            "sim_time_s": self.time_s,
+            "tick_index": self.tick_index,
             "recording_frame_index": self._recording_frame_index,
             "servo_positions_deg": snapshot["servo_positions_deg"],
             "servo_targets_deg": snapshot["servo_targets_deg"],
             "automation": snapshot["automation"],
-            "imu": snapshot["imu"],
+            "imu": {
+                "accel_mps2": [float(value) for value in self._imu_accel_body_mps2.tolist()],
+                "gyro_rps": [float(value) for value in self._imu_gyro_body_rps.tolist()],
+            },
             "detections": snapshot["phone_view"]["detections"],
             "camera_model": snapshot["phone_view"].get("camera_model"),
             "camera_pose_estimation": snapshot["phone_view"].get("camera_pose_estimation", []),

@@ -7,6 +7,7 @@ repo-inspired Newton solver driven by JAX gradients and Hessians.
 
 from __future__ import annotations
 
+import csv
 import json
 import math
 from datetime import datetime, timezone
@@ -44,6 +45,13 @@ def _load_json_lines(path: Path) -> list[dict[str, Any]]:
             if line:
                 entries.append(json.loads(line))
     return entries
+
+
+def _load_csv_dict_rows(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
 
 
 def _object_points_tag_m(pattern_half_extent_m: float) -> np.ndarray:
@@ -1763,6 +1771,215 @@ def _world_position_error_m(position_a_m: Sequence[float], position_b_m: Sequenc
     return float(np.linalg.norm(a - b))
 
 
+def _load_camera_ground_truth_rows(path: Path) -> list[dict[str, Any]]:
+    rows = _load_csv_dict_rows(path)
+    ground_truth_rows: list[dict[str, Any]] = []
+    for frame_index, row in enumerate(rows):
+        rotation_cw = np.array(
+            [
+                [float(row["r00"]), float(row["r01"]), float(row["r02"])],
+                [float(row["r10"]), float(row["r11"]), float(row["r12"])],
+                [float(row["r20"]), float(row["r21"]), float(row["r22"])],
+            ],
+            dtype=np.float64,
+        )
+        position_world_m = np.array(
+            [float(row["cx_world_m"]), float(row["cy_world_m"]), float(row["cz_world_m"])],
+            dtype=np.float64,
+        )
+        velocity_world_mps = None
+        if row.get("vx_world_mps") and row.get("vy_world_mps") and row.get("vz_world_mps"):
+            velocity_world_mps = np.array(
+                [float(row["vx_world_mps"]), float(row["vy_world_mps"]), float(row["vz_world_mps"])],
+                dtype=np.float64,
+            )
+        ground_truth_rows.append(
+            {
+                "frame_index": frame_index,
+                "recording_frame_index": int(row["tick_index"]),
+                "tick_index": int(row["tick_index"]),
+                "sim_time_s": float(row["sim_time_s"]),
+                "position_world_m": position_world_m,
+                "velocity_world_mps": velocity_world_mps,
+                "rotation_cw": rotation_cw,
+                "rotation_xyz_deg": _rotation_matrix_to_xyz_angles_deg(rotation_cw),
+                "servo_positions_deg": np.array(
+                    [float(row["servo0_deg"]), float(row["servo1_deg"]), float(row["servo2_deg"])],
+                    dtype=np.float64,
+                ),
+            }
+        )
+    return ground_truth_rows
+
+
+def _load_imu_rows(path: Path) -> list[dict[str, Any]]:
+    rows = _load_csv_dict_rows(path)
+    imu_rows: list[dict[str, Any]] = []
+    for row in rows:
+        imu_rows.append(
+            {
+                "tick_index": int(row["tick_index"]),
+                "sim_time_s": float(row["sim_time_s"]),
+                "accel_body_mps2": np.array(
+                    [float(row["ax_mps2"]), float(row["ay_mps2"]), float(row["az_mps2"])],
+                    dtype=np.float64,
+                ),
+                "gyro_body_rps": np.array(
+                    [float(row["gx_rps"]), float(row["gy_rps"]), float(row["gz_rps"])],
+                    dtype=np.float64,
+                ),
+            }
+        )
+    return imu_rows
+
+
+def _finite_difference_world_velocities(ground_truth_rows: list[dict[str, Any]]) -> list[np.ndarray]:
+    if not ground_truth_rows:
+        return []
+    if len(ground_truth_rows) == 1:
+        return [np.zeros(3, dtype=np.float64)]
+
+    velocities: list[np.ndarray] = []
+    for index, row in enumerate(ground_truth_rows):
+        if index == 0:
+            next_row = ground_truth_rows[index + 1]
+            dt = max(float(next_row["sim_time_s"]) - float(row["sim_time_s"]), 1e-9)
+            velocity = (np.asarray(next_row["position_world_m"], dtype=np.float64) - np.asarray(row["position_world_m"], dtype=np.float64)) / dt
+        elif index == len(ground_truth_rows) - 1:
+            prev_row = ground_truth_rows[index - 1]
+            dt = max(float(row["sim_time_s"]) - float(prev_row["sim_time_s"]), 1e-9)
+            velocity = (np.asarray(row["position_world_m"], dtype=np.float64) - np.asarray(prev_row["position_world_m"], dtype=np.float64)) / dt
+        else:
+            prev_row = ground_truth_rows[index - 1]
+            next_row = ground_truth_rows[index + 1]
+            dt = max(float(next_row["sim_time_s"]) - float(prev_row["sim_time_s"]), 1e-9)
+            velocity = (np.asarray(next_row["position_world_m"], dtype=np.float64) - np.asarray(prev_row["position_world_m"], dtype=np.float64)) / dt
+        velocities.append(np.asarray(velocity, dtype=np.float64))
+    return velocities
+
+
+def _integrate_imu_world_trajectory(
+    *,
+    ground_truth_rows: list[dict[str, Any]],
+    imu_rows: list[dict[str, Any]],
+    mode_name: str,
+    initial_velocity_world_mps: np.ndarray,
+) -> list[dict[str, Any]]:
+    if not ground_truth_rows or not imu_rows:
+        return []
+
+    imu_by_tick = {int(row["tick_index"]): row for row in imu_rows}
+    aligned_ground_truth_rows = [row for row in ground_truth_rows if int(row["tick_index"]) in imu_by_tick]
+    if not aligned_ground_truth_rows:
+        return []
+
+    gravity_world = np.array([0.0, 0.0, -9.81], dtype=np.float64)
+    first_row = aligned_ground_truth_rows[0]
+    first_imu = imu_by_tick[int(first_row["tick_index"])]
+
+    position_world_m = np.asarray(first_row["position_world_m"], dtype=np.float64).copy()
+    rotation_cw = np.asarray(first_row["rotation_cw"], dtype=np.float64).copy()
+    velocity_world_mps = np.asarray(initial_velocity_world_mps, dtype=np.float64).reshape(3).copy()
+    first_acceleration_world_mps2 = rotation_cw @ np.asarray(first_imu["accel_body_mps2"], dtype=np.float64) + gravity_world
+    trajectory_records: list[dict[str, Any]] = [
+        {
+            "mode_name": mode_name,
+            "frame_index": int(first_row["frame_index"]),
+            "recording_frame_index": int(first_row["recording_frame_index"]),
+            "tick_index": int(first_row["tick_index"]),
+            "sim_time_s": float(first_row["sim_time_s"]),
+            "estimated_camera_world_position_m": [float(value) for value in position_world_m.tolist()],
+            "estimated_camera_world_rotation_cw": [float(value) for value in rotation_cw.reshape(-1).tolist()],
+            "estimated_rotation_xyz_deg": [float(value) for value in _rotation_matrix_to_xyz_angles_deg(rotation_cw).tolist()],
+            "estimated_velocity_world_mps": [float(value) for value in velocity_world_mps.tolist()],
+            "estimated_acceleration_world_mps2": [float(value) for value in first_acceleration_world_mps2.tolist()],
+            "ground_truth_camera_world_position_m": [float(value) for value in np.asarray(first_row["position_world_m"], dtype=np.float64).tolist()],
+            "ground_truth_camera_world_rotation_cw": [float(value) for value in np.asarray(first_row["rotation_cw"], dtype=np.float64).reshape(-1).tolist()],
+            "ground_truth_rotation_xyz_deg": [float(value) for value in np.asarray(first_row["rotation_xyz_deg"], dtype=np.float64).tolist()],
+            "position_error_m": 0.0,
+            "rotation_error_deg": 0.0,
+            "position_error_vector_world_m": [0.0, 0.0, 0.0],
+            "rotation_error_vector_xyz_deg": [0.0, 0.0, 0.0],
+            "initialization": {
+                "position_world_m": [float(value) for value in np.asarray(first_row["position_world_m"], dtype=np.float64).tolist()],
+                "rotation_cw": [float(value) for value in np.asarray(first_row["rotation_cw"], dtype=np.float64).reshape(-1).tolist()],
+                "velocity_world_mps": [float(value) for value in velocity_world_mps.tolist()],
+            },
+        }
+    ]
+
+    previous_time_s = float(first_row["sim_time_s"])
+    for row in aligned_ground_truth_rows[1:]:
+        current_time_s = float(row["sim_time_s"])
+        dt_s = max(current_time_s - previous_time_s, 1e-9)
+        imu_row = imu_by_tick[int(row["tick_index"])]
+        delta_rotation = _rotation_matrix_rvec_np(np.asarray(imu_row["gyro_body_rps"], dtype=np.float64) * dt_s)
+        rotation_cw = rotation_cw @ delta_rotation
+        current_acceleration_world_mps2 = rotation_cw @ np.asarray(imu_row["accel_body_mps2"], dtype=np.float64) + gravity_world
+        # The simulator logs acceleration as the discrete velocity difference at the end of each step.
+        # Matching that convention exactly gives: v_k = v_{k-1} + a_k * dt and p_k = p_{k-1} + v_k * dt.
+        velocity_world_mps = velocity_world_mps + current_acceleration_world_mps2 * dt_s
+        position_world_m = position_world_m + velocity_world_mps * dt_s
+        previous_time_s = current_time_s
+
+        ground_truth_position_world_m = np.asarray(row["position_world_m"], dtype=np.float64)
+        ground_truth_rotation_cw = np.asarray(row["rotation_cw"], dtype=np.float64)
+        position_error_vector_world_m = ground_truth_position_world_m - position_world_m
+        rotation_error_vector_xyz_deg = _rotation_matrix_to_xyz_angles_deg(ground_truth_rotation_cw @ rotation_cw.T)
+
+        trajectory_records.append(
+            {
+                "mode_name": mode_name,
+                "frame_index": int(row["frame_index"]),
+                "recording_frame_index": int(row["recording_frame_index"]),
+                "tick_index": int(row["tick_index"]),
+                "sim_time_s": current_time_s,
+                "estimated_camera_world_position_m": [float(value) for value in position_world_m.tolist()],
+                "estimated_camera_world_rotation_cw": [float(value) for value in rotation_cw.reshape(-1).tolist()],
+                "estimated_rotation_xyz_deg": [float(value) for value in _rotation_matrix_to_xyz_angles_deg(rotation_cw).tolist()],
+                "estimated_velocity_world_mps": [float(value) for value in velocity_world_mps.tolist()],
+                "estimated_acceleration_world_mps2": [float(value) for value in current_acceleration_world_mps2.tolist()],
+                "ground_truth_camera_world_position_m": [float(value) for value in ground_truth_position_world_m.tolist()],
+                "ground_truth_camera_world_rotation_cw": [float(value) for value in ground_truth_rotation_cw.reshape(-1).tolist()],
+                "ground_truth_rotation_xyz_deg": [float(value) for value in np.asarray(row["rotation_xyz_deg"], dtype=np.float64).tolist()],
+                "position_error_m": float(np.linalg.norm(position_error_vector_world_m)),
+                "rotation_error_deg": _rotation_error_deg(rotation_cw, ground_truth_rotation_cw),
+                "position_error_vector_world_m": [float(value) for value in position_error_vector_world_m.tolist()],
+                "rotation_error_vector_xyz_deg": [float(value) for value in rotation_error_vector_xyz_deg.tolist()],
+            }
+        )
+
+    return trajectory_records
+
+
+def _trajectory_error_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
+    evaluation_records = records[1:] if len(records) > 1 else list(records)
+    if not evaluation_records:
+        return {
+            "samples_evaluated": 0,
+            "mean_position_error_m": None,
+            "median_position_error_m": None,
+            "max_position_error_m": None,
+            "final_position_error_m": None,
+            "mean_rotation_error_deg": None,
+            "max_rotation_error_deg": None,
+            "final_rotation_error_deg": None,
+        }
+
+    position_errors_m = [float(record["position_error_m"]) for record in evaluation_records]
+    rotation_errors_deg = [float(record["rotation_error_deg"]) for record in evaluation_records]
+    return {
+        "samples_evaluated": len(evaluation_records),
+        "mean_position_error_m": float(np.mean(position_errors_m)),
+        "median_position_error_m": float(np.median(position_errors_m)),
+        "max_position_error_m": float(np.max(position_errors_m)),
+        "final_position_error_m": float(position_errors_m[-1]),
+        "mean_rotation_error_deg": float(np.mean(rotation_errors_deg)),
+        "max_rotation_error_deg": float(np.max(rotation_errors_deg)),
+        "final_rotation_error_deg": float(rotation_errors_deg[-1]),
+    }
+
+
 def _markdown_escape_cell(value: str) -> str:
     return value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
 
@@ -1816,6 +2033,8 @@ def analyze_recording_run(run_dir: str | Path) -> dict[str, Any]:
     summary_path = analysis_dir / "summary.json"
     report_path = analysis_dir / "report.md"
     joint_world_estimates_path = analysis_dir / "joint_world_estimates.jsonl"
+    imu_trajectory_estimates_path = analysis_dir / "imu_trajectory_estimates.jsonl"
+    imu_trajectory_report_path = analysis_dir / "imu_trajectory_report.md"
     representative_image_path = analysis_dir / "representative_fit.png"
     representative_pose_comparison_path = analysis_dir / "representative_pose_comparison.png"
     representative_observation_path = analysis_dir / "representative_observation.json"
@@ -1831,14 +2050,24 @@ def analyze_recording_run(run_dir: str | Path) -> dict[str, Any]:
     position_error_plot_path = analysis_dir / "position_error_timeline.png"
     reprojection_plot_path = analysis_dir / "reprojection_timeline.png"
     loss_trace_plot_path = analysis_dir / "optimizer_loss_trace.png"
+    imu_position_error_plot_path = analysis_dir / "imu_position_error_timeline.png"
+    imu_rotation_error_plot_path = analysis_dir / "imu_rotation_error_timeline.png"
     world_pose_plot_dir = analysis_dir / "world_pose_by_tag"
     world_pose_plot_dir.mkdir(parents=True, exist_ok=True)
+    imu_world_pose_plot_dir = analysis_dir / "imu_world_pose"
+    imu_world_pose_plot_dir.mkdir(parents=True, exist_ok=True)
     world_pose_x_plot_path = world_pose_plot_dir / "camera_world_x_m.png"
     world_pose_y_plot_path = world_pose_plot_dir / "camera_world_y_m.png"
     world_pose_z_plot_path = world_pose_plot_dir / "camera_world_z_m.png"
     world_pose_rx_plot_path = world_pose_plot_dir / "camera_world_rx_deg.png"
     world_pose_ry_plot_path = world_pose_plot_dir / "camera_world_ry_deg.png"
     world_pose_rz_plot_path = world_pose_plot_dir / "camera_world_rz_deg.png"
+    imu_world_pose_x_plot_path = imu_world_pose_plot_dir / "camera_world_x_m.png"
+    imu_world_pose_y_plot_path = imu_world_pose_plot_dir / "camera_world_y_m.png"
+    imu_world_pose_z_plot_path = imu_world_pose_plot_dir / "camera_world_z_m.png"
+    imu_world_pose_rx_plot_path = imu_world_pose_plot_dir / "camera_world_rx_deg.png"
+    imu_world_pose_ry_plot_path = imu_world_pose_plot_dir / "camera_world_ry_deg.png"
+    imu_world_pose_rz_plot_path = imu_world_pose_plot_dir / "camera_world_rz_deg.png"
     image_plane_px_scale = _image_plane_scale_px_per_m(camera_model)
     scene_config = metadata.get("config", {}) if isinstance(metadata.get("config"), dict) else {}
     configured_tags = scene_config.get("tags", []) if isinstance(scene_config.get("tags"), list) else []
@@ -2905,6 +3134,337 @@ def analyze_recording_run(run_dir: str | Path) -> dict[str, Any]:
             encoding="utf-8",
         )
 
+    camera_ground_truth_rows = _load_camera_ground_truth_rows(resolved_run_dir / "camera_gt.csv")
+    imu_rows = _load_imu_rows(resolved_run_dir / "imu.csv")
+    finite_difference_velocities_world_mps = _finite_difference_world_velocities(camera_ground_truth_rows)
+    first_logged_velocity_world_mps = (
+        np.asarray(camera_ground_truth_rows[0].get("velocity_world_mps"), dtype=np.float64)
+        if camera_ground_truth_rows and camera_ground_truth_rows[0].get("velocity_world_mps") is not None
+        else None
+    )
+    imu_initial_velocity_source = "logged_camera_gt_velocity" if first_logged_velocity_world_mps is not None else "finite_difference_fallback"
+    imu_mode_order = ["true_start_velocity"]
+    imu_mode_initial_velocities = {
+        "true_start_velocity": (
+            first_logged_velocity_world_mps.copy()
+            if first_logged_velocity_world_mps is not None
+            else (
+                np.asarray(finite_difference_velocities_world_mps[0], dtype=np.float64)
+                if finite_difference_velocities_world_mps
+                else np.zeros(3, dtype=np.float64)
+            )
+        ),
+    }
+    imu_mode_labels = {
+        "true_start_velocity": "IMU DR, p0/R0 true, v0 = GT finite diff",
+    }
+    imu_mode_colors = {
+        "true_start_velocity": (186, 85, 211),
+    }
+    imu_records_by_mode: dict[str, list[dict[str, Any]]] = {}
+    imu_summaries_by_mode: dict[str, dict[str, Any]] = {}
+    imu_summary_rows: list[list[str]] = []
+
+    for mode_name, initial_velocity_world_mps in imu_mode_initial_velocities.items():
+        imu_records = _integrate_imu_world_trajectory(
+            ground_truth_rows=camera_ground_truth_rows,
+            imu_rows=imu_rows,
+            mode_name=mode_name,
+            initial_velocity_world_mps=initial_velocity_world_mps,
+        )
+        if not imu_records:
+            continue
+        imu_records_by_mode[mode_name] = imu_records
+        mode_summary = _trajectory_error_summary(imu_records)
+        mode_summary["initial_velocity_world_mps"] = [float(value) for value in initial_velocity_world_mps.tolist()]
+        imu_summaries_by_mode[mode_name] = mode_summary
+        imu_summary_rows.append(
+            [
+                f"`{mode_name}`",
+                _format_vector(initial_velocity_world_mps, precision=4),
+                f"{mode_summary['mean_position_error_m']:.6f}" if mode_summary["mean_position_error_m"] is not None else "n/a",
+                f"{mode_summary['median_position_error_m']:.6f}" if mode_summary["median_position_error_m"] is not None else "n/a",
+                f"{mode_summary['max_position_error_m']:.6f}" if mode_summary["max_position_error_m"] is not None else "n/a",
+                f"{mode_summary['final_position_error_m']:.6f}" if mode_summary["final_position_error_m"] is not None else "n/a",
+                f"{mode_summary['mean_rotation_error_deg']:.6f}" if mode_summary["mean_rotation_error_deg"] is not None else "n/a",
+                f"{mode_summary['max_rotation_error_deg']:.6f}" if mode_summary["max_rotation_error_deg"] is not None else "n/a",
+                f"{mode_summary['final_rotation_error_deg']:.6f}" if mode_summary["final_rotation_error_deg"] is not None else "n/a",
+            ]
+        )
+
+    imu_main_summary = imu_summaries_by_mode.get("true_start_velocity")
+    if imu_records_by_mode:
+        with imu_trajectory_estimates_path.open("w", encoding="utf-8") as handle:
+            for mode_name in imu_mode_order:
+                for record in imu_records_by_mode.get(mode_name, []):
+                    handle.write(json.dumps(record) + "\n")
+
+        imu_frame_numbers = [int(row["recording_frame_index"]) for row in camera_ground_truth_rows]
+        gt_position_by_frame = {
+            int(row["recording_frame_index"]): np.asarray(row["position_world_m"], dtype=np.float64)
+            for row in camera_ground_truth_rows
+        }
+        gt_rotation_xyz_by_frame = {
+            int(row["recording_frame_index"]): np.asarray(row["rotation_xyz_deg"], dtype=np.float64)
+            for row in camera_ground_truth_rows
+        }
+        imu_record_lookups = {
+            mode_name: {int(record["recording_frame_index"]): record for record in records}
+            for mode_name, records in imu_records_by_mode.items()
+        }
+        estimated_position_by_mode = {
+            mode_name: {
+                int(record["recording_frame_index"]): np.asarray(record["estimated_camera_world_position_m"], dtype=np.float64)
+                for record in records
+            }
+            for mode_name, records in imu_records_by_mode.items()
+        }
+        estimated_rotation_xyz_by_mode = {
+            mode_name: {
+                int(record["recording_frame_index"]): np.asarray(record["estimated_rotation_xyz_deg"], dtype=np.float64)
+                for record in records
+            }
+            for mode_name, records in imu_records_by_mode.items()
+        }
+
+        _save_multi_series_plot(
+            imu_position_error_plot_path,
+            title="IMU trajectory position error vs ground truth",
+            y_label="Position error [m]",
+            x_label="Recording frame",
+            x_values=imu_frame_numbers,
+            series_specs=[
+                {
+                    "label": imu_mode_labels[mode_name],
+                    "values": [
+                        float(imu_record_lookups[mode_name][frame_number]["position_error_m"])
+                        if frame_number in imu_record_lookups[mode_name]
+                        else None
+                        for frame_number in imu_frame_numbers
+                    ],
+                    "color_bgr": imu_mode_colors[mode_name],
+                }
+                for mode_name in imu_records_by_mode
+            ],
+        )
+        _save_multi_series_plot(
+            imu_rotation_error_plot_path,
+            title="IMU trajectory rotation error vs ground truth",
+            y_label="Rotation error [deg]",
+            x_label="Recording frame",
+            x_values=imu_frame_numbers,
+            series_specs=[
+                {
+                    "label": imu_mode_labels[mode_name],
+                    "values": [
+                        float(imu_record_lookups[mode_name][frame_number]["rotation_error_deg"])
+                        if frame_number in imu_record_lookups[mode_name]
+                        else None
+                        for frame_number in imu_frame_numbers
+                    ],
+                    "color_bgr": imu_mode_colors[mode_name],
+                }
+                for mode_name in imu_records_by_mode
+            ],
+        )
+
+        imu_component_specs = [
+            (
+                imu_world_pose_x_plot_path,
+                "IMU trajectory camera world X",
+                "World X [m]",
+                lambda frame_number: float(gt_position_by_frame[frame_number][0]),
+                lambda mapping, frame_number: float(mapping[frame_number][0]) if frame_number in mapping else None,
+                estimated_position_by_mode,
+            ),
+            (
+                imu_world_pose_y_plot_path,
+                "IMU trajectory camera world Y",
+                "World Y [m]",
+                lambda frame_number: float(gt_position_by_frame[frame_number][1]),
+                lambda mapping, frame_number: float(mapping[frame_number][1]) if frame_number in mapping else None,
+                estimated_position_by_mode,
+            ),
+            (
+                imu_world_pose_z_plot_path,
+                "IMU trajectory camera world Z",
+                "World Z [m]",
+                lambda frame_number: float(gt_position_by_frame[frame_number][2]),
+                lambda mapping, frame_number: float(mapping[frame_number][2]) if frame_number in mapping else None,
+                estimated_position_by_mode,
+            ),
+            (
+                imu_world_pose_rx_plot_path,
+                "IMU trajectory camera world rot X",
+                "Rot X [deg]",
+                lambda frame_number: float(gt_rotation_xyz_by_frame[frame_number][0]),
+                lambda mapping, frame_number: float(mapping[frame_number][0]) if frame_number in mapping else None,
+                estimated_rotation_xyz_by_mode,
+            ),
+            (
+                imu_world_pose_ry_plot_path,
+                "IMU trajectory camera world rot Y",
+                "Rot Y [deg]",
+                lambda frame_number: float(gt_rotation_xyz_by_frame[frame_number][1]),
+                lambda mapping, frame_number: float(mapping[frame_number][1]) if frame_number in mapping else None,
+                estimated_rotation_xyz_by_mode,
+            ),
+            (
+                imu_world_pose_rz_plot_path,
+                "IMU trajectory camera world rot Z",
+                "Rot Z [deg]",
+                lambda frame_number: float(gt_rotation_xyz_by_frame[frame_number][2]),
+                lambda mapping, frame_number: float(mapping[frame_number][2]) if frame_number in mapping else None,
+                estimated_rotation_xyz_by_mode,
+            ),
+        ]
+        for plot_path, title, y_label, gt_value_fn, estimate_value_fn, mode_mappings in imu_component_specs:
+            _save_multi_series_plot(
+                plot_path,
+                title=title,
+                y_label=y_label,
+                x_label="Recording frame",
+                x_values=imu_frame_numbers,
+                series_specs=[
+                    {
+                        "label": "ground truth",
+                        "values": [gt_value_fn(frame_number) for frame_number in imu_frame_numbers],
+                        "color_bgr": (52, 60, 68),
+                    },
+                    *[
+                        {
+                            "label": imu_mode_labels[mode_name],
+                            "values": [estimate_value_fn(mode_mappings.get(mode_name, {}), frame_number) for frame_number in imu_frame_numbers],
+                            "color_bgr": imu_mode_colors[mode_name],
+                        }
+                        for mode_name in imu_mode_order
+                        if mode_name in mode_mappings
+                    ],
+                ],
+            )
+
+        imu_caveat_lines: list[str] = []
+        if imu_initial_velocity_source != "logged_camera_gt_velocity":
+            imu_caveat_lines = [
+                "## Important Caveat",
+                "",
+                "This recording predates the exact IMU logging fix.",
+                "- The start velocity is not logged explicitly in `camera_gt.csv`, so this report must infer it from finite differences.",
+                "- The persisted IMU/time stream in this historical run is therefore not the exact simulator internal state.",
+                "- These plots are current for this run, but they should be read as a diagnostic of the legacy recording path, not as the exact-simulator inertial benchmark.",
+                "",
+            ]
+
+        imu_report_lines = [
+            "# IMU Trajectory Reconstruction Report",
+            "",
+            "## Scope",
+            "",
+            f"- Run directory: `{resolved_run_dir}`",
+            f"- Camera model: `{camera_model.name}`",
+            f"- Ground-truth anchor: the first recorded camera world position and camera-to-world rotation are fixed to the true values from `camera_gt.csv`",
+            f"- Samples used: `{len(camera_ground_truth_rows)}` camera ground-truth rows and `{len(imu_rows)}` IMU rows",
+            f"- Initial velocity source: `{imu_initial_velocity_source}`",
+            "",
+            "## Method",
+            "",
+            "This report reconstructs the camera trajectory from the recorded accelerometer and gyroscope streams only.",
+            "",
+            "State and initialization:",
+            "- The reconstruction state is camera world position, camera-to-world rotation, and world velocity.",
+            "- `p0` and `R0` are clamped to the true first camera pose so the trajectory can be compared directly against ground truth.",
+            (
+                "- The reconstruction uses the exact logged initial world velocity from `camera_gt.csv`."
+                if imu_initial_velocity_source == "logged_camera_gt_velocity"
+                else "- The reconstruction falls back to a finite-difference estimate of the initial world velocity from the first two ground-truth samples because the recording does not contain logged world velocity."
+            ),
+            "",
+            "Propagation model:",
+            "- Gyroscope integration: `R_{k+1} = R_k Exp(omega_body * dt)`.",
+            "- Accelerometer interpretation: the logged accelerometer is body-frame specific force, so world linear acceleration is `a_world = R * a_body + g` with `g = [0, 0, -9.81] m/s^2`.",
+            "- Translation update matches the simulator's discrete convention: `v_k = v_{k-1} + a_k dt`, then `p_k = p_{k-1} + v_k dt`.",
+            "",
+            "This is pure inertial dead reckoning: no visual corrections, no bias estimation, and no smoothing pass.",
+            "",
+            *imu_caveat_lines,
+            "## Summary",
+            "",
+            *_markdown_table(
+                [
+                    "mode",
+                    "initial velocity [m/s]",
+                    "mean pos err [m]",
+                    "median pos err [m]",
+                    "max pos err [m]",
+                    "final pos err [m]",
+                    "mean rot err [deg]",
+                    "max rot err [deg]",
+                    "final rot err [deg]",
+                ],
+                imu_summary_rows,
+            ),
+            "",
+            "## Error Timelines",
+            "",
+            "Position error against ground truth in world meters:",
+            "",
+            "![IMU position error timeline](imu_position_error_timeline.png)",
+            "",
+            "Rotation error against ground truth in degrees:",
+            "",
+            "![IMU rotation error timeline](imu_rotation_error_timeline.png)",
+            "",
+            "## World-Pose Components",
+            "",
+            (
+                "Each plot uses recording frame number on the x axis. Gray is ground truth and purple is the IMU-only reconstruction anchored at the true first pose with the exact logged initial world velocity."
+                if imu_initial_velocity_source == "logged_camera_gt_velocity"
+                else "Each plot uses recording frame number on the x axis. Gray is ground truth and purple is the IMU-only reconstruction anchored at the true first pose with a finite-difference initial world velocity estimate."
+            ),
+            "",
+            "![IMU world x](imu_world_pose/camera_world_x_m.png)",
+            "",
+            "![IMU world y](imu_world_pose/camera_world_y_m.png)",
+            "",
+            "![IMU world z](imu_world_pose/camera_world_z_m.png)",
+            "",
+            "![IMU world rot x](imu_world_pose/camera_world_rx_deg.png)",
+            "",
+            "![IMU world rot y](imu_world_pose/camera_world_ry_deg.png)",
+            "",
+            "![IMU world rot z](imu_world_pose/camera_world_rz_deg.png)",
+            "",
+            "## Interpretation",
+            "",
+            (
+                f"The main anchored IMU reconstruction reaches mean position error `{imu_main_summary['mean_position_error_m']:.6f}` m "
+                f"and max position error `{imu_main_summary['max_position_error_m']:.6f}` m."
+                if imu_main_summary is not None and imu_main_summary["mean_position_error_m"] is not None
+                else "The main anchored IMU reconstruction did not produce enough samples for summary statistics."
+            ),
+            (
+                "This run uses the exact logged initial world velocity from the simulator, so any remaining drift mainly reflects the precision of the persisted IMU/time stream and the discrete integration model."
+                if imu_initial_velocity_source == "logged_camera_gt_velocity"
+                else "This run had to infer the initial world velocity from finite differences, so its drift is expected to be worse than a recording with exact logged start velocity."
+            ),
+            "Because the simulated IMU stream is noise-free and bias-free, these numbers should be interpreted as a best-case inertial-only baseline before any visual fusion.",
+            "",
+        ]
+        imu_trajectory_report_path.write_text("\n".join(imu_report_lines).strip() + "\n", encoding="utf-8")
+    else:
+        imu_trajectory_estimates_path.write_text("", encoding="utf-8")
+        imu_trajectory_report_path.write_text(
+            "\n".join(
+                [
+                    "# IMU Trajectory Reconstruction Report",
+                    "",
+                    "No IMU trajectory reconstruction could be generated because `camera_gt.csv` and `imu.csv` did not contain an alignable sample set.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
     summary = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "run_dir": str(resolved_run_dir),
@@ -2935,12 +3495,19 @@ def analyze_recording_run(run_dir: str | Path) -> dict[str, Any]:
         "joint_world_max_position_error_m": float(np.max(joint_world_position_errors_m)) if joint_world_position_errors_m else None,
         "joint_world_mean_rotation_error_deg": float(np.mean(joint_world_rotation_errors_deg)) if joint_world_rotation_errors_deg else None,
         "joint_world_mean_reprojection_rmse_px": float(np.mean(joint_world_reprojection_px)) if joint_world_reprojection_px else None,
+        "imu_trajectory": {
+            "main_mode": "true_start_velocity",
+            "initial_velocity_source": imu_initial_velocity_source,
+            "modes": imu_summaries_by_mode,
+        },
         "per_tag": per_tag_summary,
         "artifacts": {
             "undistorted_video": str(undistorted_video_path.relative_to(resolved_run_dir)),
             "annotated_video": str(annotated_video_path.relative_to(resolved_run_dir)),
             "pose_estimates": str(estimates_path.relative_to(resolved_run_dir)),
             "joint_world_estimates": str(joint_world_estimates_path.relative_to(resolved_run_dir)),
+            "imu_trajectory_estimates": str(imu_trajectory_estimates_path.relative_to(resolved_run_dir)),
+            "imu_trajectory_report": str(imu_trajectory_report_path.relative_to(resolved_run_dir)),
             "report": str(report_path.relative_to(resolved_run_dir)),
             "single_pattern_report": str(single_pattern_report_path.relative_to(resolved_run_dir)),
             "single_pattern_overlay": str(single_pattern_overlay_path.relative_to(resolved_run_dir)),
@@ -2955,6 +3522,8 @@ def analyze_recording_run(run_dir: str | Path) -> dict[str, Any]:
             "position_error_plot": str(position_error_plot_path.relative_to(resolved_run_dir)),
             "reprojection_plot": str(reprojection_plot_path.relative_to(resolved_run_dir)),
             "loss_trace_plot": str(loss_trace_plot_path.relative_to(resolved_run_dir)),
+            "imu_position_error_plot": str(imu_position_error_plot_path.relative_to(resolved_run_dir)),
+            "imu_rotation_error_plot": str(imu_rotation_error_plot_path.relative_to(resolved_run_dir)),
             "per_tag_directory": str(per_tag_dir.relative_to(resolved_run_dir)),
             "per_tag_summary": str(per_tag_summary_path.relative_to(resolved_run_dir)),
             "world_pose_by_tag_directory": str(world_pose_plot_dir.relative_to(resolved_run_dir)),
@@ -2964,6 +3533,13 @@ def analyze_recording_run(run_dir: str | Path) -> dict[str, Any]:
             "world_pose_rx_plot": str(world_pose_rx_plot_path.relative_to(resolved_run_dir)),
             "world_pose_ry_plot": str(world_pose_ry_plot_path.relative_to(resolved_run_dir)),
             "world_pose_rz_plot": str(world_pose_rz_plot_path.relative_to(resolved_run_dir)),
+            "imu_world_pose_directory": str(imu_world_pose_plot_dir.relative_to(resolved_run_dir)),
+            "imu_world_pose_x_plot": str(imu_world_pose_x_plot_path.relative_to(resolved_run_dir)),
+            "imu_world_pose_y_plot": str(imu_world_pose_y_plot_path.relative_to(resolved_run_dir)),
+            "imu_world_pose_z_plot": str(imu_world_pose_z_plot_path.relative_to(resolved_run_dir)),
+            "imu_world_pose_rx_plot": str(imu_world_pose_rx_plot_path.relative_to(resolved_run_dir)),
+            "imu_world_pose_ry_plot": str(imu_world_pose_ry_plot_path.relative_to(resolved_run_dir)),
+            "imu_world_pose_rz_plot": str(imu_world_pose_rz_plot_path.relative_to(resolved_run_dir)),
         },
     }
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -3140,7 +3716,13 @@ def analyze_recording_run(run_dir: str | Path) -> dict[str, Any]:
             f"- The `position_error_timeline.png` plot is a world-space camera-position error in meters, measured in the tag coordinate frame.",
             f"- The `reprojection_timeline.png` plot is an image-space reprojection RMSE in pixels, not world meters.",
             "",
-            "A useful sanity check is that the tags are only 10 cm wide and the camera is typically about 1.6 m away from a tag in this demo. So a 3 m world-position error really is huge, while a 1-3 px reprojection error is comparatively small.",
+            (
+                f"A useful sanity check is that the reference tag size in this run is `{tag_size_reference_m:.3f}` m "
+                f"and the camera is typically about `{mean_camera_tag_distance_m:.3f}` m away from a tag. "
+                "So meter-scale world-position error would be huge, while a sub-pixel to low-pixel reprojection error is comparatively small."
+                if tag_size_reference_m is not None and mean_camera_tag_distance_m is not None
+                else "A useful sanity check is to compare world-position error against the physical tag size and camera-to-tag distance reported above."
+            ),
             "",
             "### Pose Comparison Against Ground Truth",
             "",
@@ -4056,6 +4638,39 @@ def analyze_recording_run(run_dir: str | Path) -> dict[str, Any]:
         "",
         "![Camera world rot z](world_pose_by_tag/camera_world_rz_deg.png)",
         "",
+        "## IMU Trajectory Reconstruction",
+        "",
+        (
+            "This run also includes a pure IMU dead-reckoning reconstruction. The first camera pose is fixed to the true world pose so the trajectory can be compared directly against ground truth, and the initial world velocity is taken from the exact value logged in `camera_gt.csv`."
+            if imu_initial_velocity_source == "logged_camera_gt_velocity"
+            else "This run also includes a pure IMU dead-reckoning reconstruction. The first camera pose is fixed to the true world pose so the trajectory can be compared directly against ground truth, and the initial world velocity is inferred from finite differences because this recording did not log it explicitly."
+        ),
+        "",
+        f"- Detailed IMU report: `{imu_trajectory_report_path.relative_to(resolved_run_dir)}`",
+        f"- IMU trajectory samples: `{imu_trajectory_estimates_path.relative_to(resolved_run_dir)}`",
+        f"- Main IMU mean position error: `{imu_main_summary['mean_position_error_m'] if imu_main_summary and imu_main_summary['mean_position_error_m'] is not None else 'n/a'}` m",
+        f"- Main IMU max position error: `{imu_main_summary['max_position_error_m'] if imu_main_summary and imu_main_summary['max_position_error_m'] is not None else 'n/a'}` m",
+        f"- Main IMU mean rotation error: `{imu_main_summary['mean_rotation_error_deg'] if imu_main_summary and imu_main_summary['mean_rotation_error_deg'] is not None else 'n/a'}` deg",
+        "",
+        *_markdown_table(
+            [
+                "mode",
+                "initial velocity [m/s]",
+                "mean pos err [m]",
+                "median pos err [m]",
+                "max pos err [m]",
+                "final pos err [m]",
+                "mean rot err [deg]",
+                "max rot err [deg]",
+                "final rot err [deg]",
+            ],
+            imu_summary_rows,
+        ),
+        "",
+        "![IMU position error timeline](imu_position_error_timeline.png)",
+        "",
+        "![IMU rotation error timeline](imu_rotation_error_timeline.png)",
+        "",
         "## Visual Diagnostics",
         "",
         "Representative best-reprojection frame:",
@@ -4091,6 +4706,8 @@ def analyze_recording_run(run_dir: str | Path) -> dict[str, Any]:
         f"- Detected/annotated video: `{annotated_video_path.relative_to(resolved_run_dir)}`",
         f"- Per-frame estimates: `{estimates_path.relative_to(resolved_run_dir)}`",
         f"- Per-frame joint world estimates: `{joint_world_estimates_path.relative_to(resolved_run_dir)}`",
+        f"- IMU trajectory estimates: `{imu_trajectory_estimates_path.relative_to(resolved_run_dir)}`",
+        f"- IMU trajectory report: `{imu_trajectory_report_path.relative_to(resolved_run_dir)}`",
         f"- Summary JSON: `{summary_path.relative_to(resolved_run_dir)}`",
         f"- Single pattern report: `{single_pattern_report_path.relative_to(resolved_run_dir)}`",
         f"- Single pattern overlay: `{single_pattern_overlay_path.relative_to(resolved_run_dir)}`",
@@ -4110,6 +4727,9 @@ def analyze_recording_run(run_dir: str | Path) -> dict[str, Any]:
         f"- World rot X plot: `{world_pose_rx_plot_path.relative_to(resolved_run_dir)}`",
         f"- World rot Y plot: `{world_pose_ry_plot_path.relative_to(resolved_run_dir)}`",
         f"- World rot Z plot: `{world_pose_rz_plot_path.relative_to(resolved_run_dir)}`",
+        f"- IMU position error plot: `{imu_position_error_plot_path.relative_to(resolved_run_dir)}`",
+        f"- IMU rotation error plot: `{imu_rotation_error_plot_path.relative_to(resolved_run_dir)}`",
+        f"- IMU world-pose directory: `{imu_world_pose_plot_dir.relative_to(resolved_run_dir)}`",
     ]
     )
     if per_tag_rows:

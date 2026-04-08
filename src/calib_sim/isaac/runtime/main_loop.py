@@ -17,6 +17,7 @@ from calib_sim.isaac.control.safety_gates import SafetyGates
 from calib_sim.isaac.control.waypoint_manager import Waypoint, WaypointManager
 from calib_sim.isaac.estimation.fixed_lag_smoother import FixedLagSmoother
 from calib_sim.isaac.estimation.online_filter import AnchoredOnlineFilter
+from calib_sim.isaac.estimation.windowed_anchor_ba import WindowedAnchorBASmoother
 from calib_sim.isaac.frontend.apriltag_frontend import IsaacAprilTagFrontend
 from calib_sim.isaac.logging.schemas import (
     IsaacCameraFramePacket,
@@ -209,7 +210,7 @@ class IsaacStandaloneRuntime:
         self._imu_binding: IsaacImuBinding | None = None
         self._frontend: IsaacAprilTagFrontend | None = None
         self._filter: AnchoredOnlineFilter | None = None
-        self._smoother: FixedLagSmoother | None = None
+        self._smoother: FixedLagSmoother | WindowedAnchorBASmoother | None = None
         self._tracker: PathTracker | None = None
         self._filter_clock: FixedRateClock | None = None
         self._smoother_clock: FixedRateClock | None = None
@@ -233,6 +234,8 @@ class IsaacStandaloneRuntime:
         self._controller_consecutive_ik_failures = 0
         self._finalized_summary: IsaacRunSummary | None = None
         self._tag_feedback_diagnostics: dict[int, dict[str, Any]] = {}
+        self._last_camera_intrinsics_snapshot: dict[str, Any] | None = None
+        self._smoother_interval_imu_packets: list[Any] = []
 
     @property
     def writer(self) -> IsaacRunWriter:
@@ -317,14 +320,25 @@ class IsaacStandaloneRuntime:
         smoother_config = estimation_config.get("smoother", {})
         self._filter.use_auxiliary_tag_updates = bool(filter_config.get("use_aux_tags_in_filter", True))
         self._filter.vision_covariance_scale = float(filter_config.get("vision_covariance_scale", 1.0))
+        if filter_config.get("anchor_vision_covariance_scale") not in (None, ""):
+            self._filter.anchor_vision_covariance_scale = float(filter_config.get("anchor_vision_covariance_scale"))
+        if filter_config.get("aux_vision_covariance_scale") not in (None, ""):
+            self._filter.aux_vision_covariance_scale = float(filter_config.get("aux_vision_covariance_scale"))
         self._filter.imu_process_covariance_scale = float(filter_config.get("imu_process_covariance_scale", 1.0))
         self._filter.post_relocalization_covariance_scale = float(
             filter_config.get("post_relocalization_covariance_scale", 1.0)
         )
-        self._smoother = FixedLagSmoother(
-            lag_size=int(smoother_config.get("lag_size", 30)),
-            use_auxiliary_tags=bool(smoother_config.get("use_aux_tags_in_smoother", True)),
-        )
+        smoother_backend = str(smoother_config.get("backend", "lightweight")).strip().lower()
+        if smoother_backend == "windowed_ba":
+            self._smoother = WindowedAnchorBASmoother(
+                lag_size=int(smoother_config.get("lag_size", 30)),
+                use_auxiliary_tags=bool(smoother_config.get("use_aux_tags_in_smoother", True)),
+            )
+        else:
+            self._smoother = FixedLagSmoother(
+                lag_size=int(smoother_config.get("lag_size", 30)),
+                use_auxiliary_tags=bool(smoother_config.get("use_aux_tags_in_smoother", True)),
+            )
         waypoints = tuple(
             Waypoint(
                 position_world_m=tuple(float(value) for value in waypoint["position_world_m"]),
@@ -516,6 +530,7 @@ class IsaacStandaloneRuntime:
                 },
             )
             self._counts["imu_packets"] += 1
+            self._smoother_interval_imu_packets.append(packet)
         return tuple(packets)
 
     def _process_camera(self, timestamps: TimestampTriplet) -> None:
@@ -549,6 +564,7 @@ class IsaacStandaloneRuntime:
             )
             self._writer.write_camera_frame(frame_packet)
             self._counts["camera_frames"] += 1
+            self._last_camera_intrinsics_snapshot = dict(frame_packet.intrinsics_snapshot)
             self._writer.write_gt(
                 namespace="camera",
                 payload={
@@ -654,16 +670,36 @@ class IsaacStandaloneRuntime:
             return
         for _ in self._smoother_clock.advance_to(self._sim_time_s):
             self._smoother.push_snapshot(self._latest_filter_snapshot)
+            self._smoother.observe_imu_interval(imu_packets=tuple(self._smoother_interval_imu_packets))
+            self._smoother_interval_imu_packets.clear()
             self._smoother.observe_auxiliary_detections(
                 detections=tuple(self._last_detections),
                 current_state=self._latest_filter_snapshot,
                 anchor_pose_map=self._tag_pose_map,
+                intrinsics_snapshot=self._last_camera_intrinsics_snapshot,
             )
+            smoother_snapshot = self._smoother.solve()
+            smoother_diagnostics = dict(smoother_snapshot.diagnostics)
             feedback_observation_count = int(
                 self.config.config_payloads["estimation"].get("smoother", {}).get("min_feedback_observation_count", 5)
             )
             max_feedback_correction_norm_m = float(
                 self.config.config_payloads["estimation"].get("smoother", {}).get("max_feedback_correction_norm_m", 0.15)
+            )
+            anchored_window = bool(smoother_diagnostics.get("anchored_window", False))
+            residual_before = smoother_diagnostics.get("residual_rmse_before_px")
+            residual_after = smoother_diagnostics.get("residual_rmse_after_px")
+            residual_improved = not (
+                residual_before not in (None, "")
+                and residual_after not in (None, "")
+                and float(residual_after) > float(residual_before) + 1e-6
+            )
+            covariance_trace_before = smoother_diagnostics.get("covariance_trace_before")
+            covariance_trace_after = smoother_diagnostics.get("covariance_trace_after")
+            covariance_contracted = not (
+                covariance_trace_before not in (None, "")
+                and covariance_trace_after not in (None, "")
+                and float(covariance_trace_after) > float(covariance_trace_before) + 1e-6
             )
             total_feedback_candidates = 0
             trusted_feedback_count = 0
@@ -681,12 +717,20 @@ class IsaacStandaloneRuntime:
                 )
                 candidate_position = np.asarray(estimate.pose_wt[:3, 3], dtype=np.float64).reshape(3)
                 correction_norm_m = float(np.linalg.norm(candidate_position - previous_position))
-                trusted = correction_norm_m <= max_feedback_correction_norm_m
+                trusted = (
+                    anchored_window
+                    and residual_improved
+                    and covariance_contracted
+                    and correction_norm_m <= max_feedback_correction_norm_m
+                )
                 max_feedback_correction_norm_seen = max(max_feedback_correction_norm_seen, correction_norm_m)
                 self._tag_feedback_diagnostics[int(tag_id)] = {
                     "feedback_correction_norm_m": float(correction_norm_m),
                     "trusted": bool(trusted),
                     "observation_count": int(estimate.observation_count),
+                    "anchored_window": bool(anchored_window),
+                    "residual_improved": bool(residual_improved),
+                    "covariance_contracted": bool(covariance_contracted),
                 }
                 if not trusted:
                     continue
@@ -709,7 +753,17 @@ class IsaacStandaloneRuntime:
                 trusted_feedback_count=int(trusted_feedback_count),
                 total_feedback_candidates=int(total_feedback_candidates),
             )
-            smoother_snapshot = self._smoother.solve()
+            smoother_snapshot.diagnostics.update(
+                {
+                    "feedback_correction_norm_m": float(max_feedback_correction_norm_seen),
+                    "max_feedback_correction_norm_m": float(max_feedback_correction_norm_m),
+                    "trusted_feedback_count": float(trusted_feedback_count),
+                    "total_feedback_candidates": float(total_feedback_candidates),
+                    "anchored_window": bool(anchored_window),
+                    "residual_improved": bool(residual_improved),
+                    "covariance_contracted": bool(covariance_contracted),
+                }
+            )
             self._writer.write_smoother_state(smoother_snapshot)
             self._counts["smoother_states"] += 1
 

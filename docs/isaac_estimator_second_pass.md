@@ -64,6 +64,73 @@ Use the new switches so anchor-only means:
 - `use_aux_tags_in_smoother = false`
 - `use_aux_map_for_control = false`
 
+Build the six-run isolation bundle with:
+
+```bash
+source .venv/bin/activate
+python scripts/build_isaac_second_pass_isolation_bundle.py
+```
+
+This writes:
+
+- `output/isaac_runs/latest_second_pass_isolation/summary.csv`
+- `output/isaac_runs/latest_second_pass_isolation/summary.json`
+- `docs/isaac_second_pass_isolation_summary.md`
+
+## Current Status
+
+The seed-`007` isolation bundle has now been executed on real 8-second Isaac
+runs. The current automatic classification is:
+
+- `fused_mechanization_or_weighting_bug`
+
+The evidence for that call is simple:
+
+- anchor-only visual is already numerically sane
+- anchor-only fused is still more than 10% worse than anchor-only visual on
+  mean position error
+- aux-enabled runs stay well behaved rather than exploding
+- reprojection metrics are now sane rather than the absurd first-pass values
+
+Representative bundle numbers from
+`output/isaac_runs/latest_second_pass_isolation/summary.json`:
+
+- `visual / anchor-only`: position error `0.0166 m`, waypoint error `0.0202 m`,
+  coverage `99.59%`, NEES `8.67`
+- `fused / anchor-only`: position error `0.0190 m`, waypoint error `0.0228 m`,
+  coverage `97.94%`, NEES `9.48`
+- `visual / aux-for-control`: aux map error `0.0256 m`
+- `fused / aux-for-control`: aux map error `0.0269 m`
+
+That means the aux-tag path is no longer the first suspect on this branch.
+The next estimator change should focus on fused process/measurement weighting
+before broadening the campaign.
+
+## Current Tuning Note
+
+A small fused-only sweep on the same canonical seed-`007` setup already shows
+that increasing `imu_process_covariance_scale` is a useful next-step lever.
+
+Observed follow-up runs:
+
+- `second_pass_fused_anchor_only_seed_007_imu_scale_2`
+  - position error `0.01624 m`
+  - coverage `98.54%`
+  - NEES `5.70`
+- `second_pass_fused_anchor_only_seed_007_imu_scale_4`
+  - position error `0.01621 m`
+  - coverage `98.75%`
+  - NEES `5.58`
+- `second_pass_fused_aux_control_seed_007_imu_scale_4`
+  - position error `0.01632 m`
+  - aux map error `0.0240 m`
+  - coverage `98.54%`
+  - NEES `5.62`
+
+This sweep materially improves fused state accuracy and calibration, but it
+does not yet close the full waypoint-error gap to visual closed-loop. That is
+the current boundary before a broader second-pass science suite.
+
 ## Current Diagnostic Focus
 
 The new runtime/reporting path now separates:

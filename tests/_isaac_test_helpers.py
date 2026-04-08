@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 
 import cv2
 import numpy as np
@@ -764,3 +765,85 @@ def make_estimator_quality_isaac_run(tmp_path: Path) -> Path:
         )
     )
     return run_dir
+
+
+def make_second_pass_isolation_runs(output_root: Path) -> list[Path]:
+    output_root.mkdir(parents=True, exist_ok=True)
+    specs = [
+        ("second_pass_visual_closed_loop_anchor_only_seed_007", "visual", False, False, False, 0.041, 0.020, 12.0, 8.0, 0.98, 4.5, 0.040),
+        ("second_pass_fused_closed_loop_anchor_only_seed_007", "fused", False, False, False, 0.045, 0.022, 14.0, 9.5, 0.96, 5.2, 0.050),
+        ("second_pass_visual_closed_loop_aux_estimation_only_seed_007", "visual", True, True, False, 0.043, 0.021, 18.0, 240.0, 0.90, 12.0, 0.420),
+        ("second_pass_fused_closed_loop_aux_estimation_only_seed_007", "fused", True, True, False, 0.048, 0.024, 20.0, 310.0, 0.84, 19.0, 0.610),
+        ("second_pass_visual_closed_loop_aux_for_control_seed_007", "visual", True, True, True, 0.046, 0.023, 19.0, 260.0, 0.88, 14.0, 0.520),
+        ("second_pass_fused_closed_loop_aux_for_control_seed_007", "fused", True, True, True, 0.052, 0.026, 22.0, 340.0, 0.80, 22.0, 0.700),
+    ]
+    run_dirs: list[Path] = []
+    for run_id, estimator_mode, use_filter, use_smoother, use_control, pos_err, waypoint_err, anchor_rmse, aux_rmse, coverage, nees, aux_map_err in specs:
+        run_dir = output_root / run_id
+        if run_dir.exists():
+            shutil.rmtree(run_dir)
+        (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
+        (run_dir / "config_snapshot").mkdir(parents=True, exist_ok=True)
+        metrics = {
+            "run_id": run_id,
+            "config": {
+                "estimator_mode": estimator_mode,
+                "controller_mode": "closed-loop",
+            },
+            "trajectory": {
+                "mean_position_error_m": pos_err,
+            },
+            "control": {
+                "mean_waypoint_error_m": waypoint_err,
+            },
+            "estimation": {
+                "anchor_pnp_success_fraction": 1.0,
+                "fallback_only_frame_fraction": 0.02 if use_filter else 0.0,
+                "mean_anchor_innovation_norm": 0.03,
+            },
+        }
+        quality = {
+            "run_id": run_id,
+            "summary": {
+                "anchor_mean_reprojection_rmse_px": anchor_rmse,
+                "auxiliary_mean_reprojection_rmse_px": aux_rmse,
+                "accepted_auxiliary_updates": 24 if use_filter else 0,
+                "rejected_auxiliary_updates": 6 if use_filter else 0,
+                "mean_smoother_correction_norm_m": 0.18 if use_control else 0.05,
+            },
+            "uncertainty": {
+                "empirical_95_coverage_percent": coverage,
+                "pose_nees": nees,
+            },
+            "map_quality": {
+                "mean_auxiliary_tag_position_error_m": aux_map_err,
+            },
+            "detection_residuals": [
+                {"native_backend": True},
+                {"native_backend": True},
+                {"native_backend": not use_filter},
+            ],
+        }
+        (run_dir / "analysis" / "metrics.json").write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        (run_dir / "analysis" / "estimator_quality.json").write_text(
+            json.dumps(quality, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "config_snapshot" / "estimation.json").write_text(
+            json.dumps(
+                {
+                    "filter": {"use_aux_tags_in_filter": use_filter},
+                    "smoother": {"use_aux_tags_in_smoother": use_smoother, "backend": "lightweight"},
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "config_snapshot" / "control.json").write_text(
+            json.dumps({"use_aux_map_for_control": use_control}, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        run_dirs.append(run_dir)
+    return run_dirs

@@ -12,6 +12,8 @@ from calib_sim.isaac.tag_builder import TagPoseSpec
 def test_uncertainty_scaling_knobs_are_reflected_in_filter_outputs() -> None:
     filter_model = AnchoredOnlineFilter.identity_initialized(estimator_mode="fused")
     filter_model.vision_covariance_scale = 2.0
+    filter_model.anchor_vision_covariance_scale = 5.0
+    filter_model.aux_vision_covariance_scale = 6.0
     filter_model.imu_process_covariance_scale = 3.0
     filter_model.post_relocalization_covariance_scale = 4.0
 
@@ -76,6 +78,9 @@ def test_uncertainty_scaling_knobs_are_reflected_in_filter_outputs() -> None:
     uncertainty = filter_model.current_uncertainty_summary(sim_time_s=0.02)
 
     assert uncertainty.diagnostics["vision_covariance_scale"] == 2.0
+    assert uncertainty.diagnostics["anchor_vision_covariance_scale"] == 5.0
+    assert uncertainty.diagnostics["aux_vision_covariance_scale"] == 6.0
     assert uncertainty.diagnostics["imu_process_covariance_scale"] == 3.0
     assert uncertainty.diagnostics["post_relocalization_covariance_scale"] == 4.0
+    assert uncertainty.diagnostics["last_anchor_nis"] is not None
     assert uncertainty.position_radius_95_m > 0.0

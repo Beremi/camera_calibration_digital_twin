@@ -27,12 +27,19 @@ def test_run_script_dry_run_exposes_auxiliary_isolation_switches(tmp_path: Path)
             "--no-use-aux-tags-in-filter",
             "--no-use-aux-tags-in-smoother",
             "--no-use-aux-map-for-control",
+            "--smoother-backend",
+            "windowed_ba",
             "--vision-covariance-scale",
             "2.0",
+            "--anchor-vision-covariance-scale",
+            "5.0",
+            "--aux-vision-covariance-scale",
+            "6.0",
             "--imu-process-covariance-scale",
             "3.0",
             "--post-relocalization-covariance-scale",
             "4.0",
+            "--no-promote-global-latest",
         ],
         cwd=str(repo_root),
         check=True,
@@ -46,7 +53,10 @@ def test_run_script_dry_run_exposes_auxiliary_isolation_switches(tmp_path: Path)
 
     assert estimation_filter["use_aux_tags_in_filter"] is False
     assert estimation_smoother["use_aux_tags_in_smoother"] is False
+    assert estimation_smoother["backend"] == "windowed_ba"
     assert control_config["use_aux_map_for_control"] is False
     assert estimation_filter["vision_covariance_scale"] == 2.0
+    assert estimation_filter["anchor_vision_covariance_scale"] == 5.0
+    assert estimation_filter["aux_vision_covariance_scale"] == 6.0
     assert estimation_filter["imu_process_covariance_scale"] == 3.0
     assert estimation_filter["post_relocalization_covariance_scale"] == 4.0

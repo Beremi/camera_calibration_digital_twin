@@ -62,13 +62,18 @@ def _is_complete_run(metrics: dict[str, Any], *, figure_count: int | None = None
     return True
 
 
-def generate_isaac_report_artifacts(run_dir: str | Path, *, allow_incomplete: bool = False) -> dict[str, Any]:
+def generate_isaac_report_artifacts(
+    run_dir: str | Path,
+    *,
+    allow_incomplete: bool = False,
+    promote_links: bool = True,
+) -> dict[str, Any]:
     """Generate report-ready metrics, tables, and figures for one Isaac run."""
 
     resolved = Path(run_dir).resolve()
     metrics = compute_isaac_run_metrics(resolved)
-    latest_any_link = _promote_run_link(resolved, "latest_any")
-    latest_link = _promote_run_link(resolved, "latest")
+    latest_any_link = _promote_run_link(resolved, "latest_any") if promote_links else None
+    latest_link = _promote_run_link(resolved, "latest") if promote_links else None
     tables = write_isaac_report_tables(resolved, metrics)
     figures = write_isaac_report_figures(resolved, metrics)
     generated_figure_count = sum(1 for path in figures.values() if Path(path).exists())
@@ -78,13 +83,14 @@ def generate_isaac_report_artifacts(run_dir: str | Path, *, allow_incomplete: bo
             "Isaac run is incomplete and cannot be used for publication artifacts. "
             "Use --allow-incomplete for debugging, or rerun until the completeness thresholds are met."
         )
-    latest_complete_link = _promote_run_link(resolved, "latest_complete") if complete else None
+    latest_complete_link = _promote_run_link(resolved, "latest_complete") if complete and promote_links else None
     return {
         "metrics": metrics,
         "tables": tables,
         "figures": figures,
         "generated_figure_count": int(generated_figure_count),
         "complete": complete,
+        "promote_links": bool(promote_links),
         "latest_any_link": latest_any_link,
         "latest_complete_link": latest_complete_link,
         "latest_run_link": latest_link or latest_any_link,

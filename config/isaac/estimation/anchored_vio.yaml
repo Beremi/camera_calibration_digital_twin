@@ -10,6 +10,8 @@ filter:
   auxiliary_update_trust: 0.15
   use_aux_tags_in_filter: true
   vision_covariance_scale: 1.0
+  anchor_vision_covariance_scale: null
+  aux_vision_covariance_scale: null
   imu_process_covariance_scale: 1.0
   post_relocalization_covariance_scale: 1.0
   auxiliary_update_min_corner_margin_px: 12.0
@@ -19,6 +21,7 @@ filter:
   auxiliary_update_max_mahalanobis_score: 32.0
   auxiliary_update_max_feedback_correction_m: 0.15
 smoother:
+  backend: lightweight
   lag_size: 30
   solve_rate_hz: 10.0
   refine_biases: true

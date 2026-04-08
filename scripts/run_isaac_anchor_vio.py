@@ -56,10 +56,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--validate-config-only", action="store_true")
     parser.add_argument("--allow-incomplete-report", action="store_true")
     parser.add_argument("--allow-gt-debug-control", action="store_true")
+    parser.add_argument("--promote-global-latest", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--use-aux-tags-in-filter", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--use-aux-tags-in-smoother", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--use-aux-map-for-control", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--smoother-backend", choices=("lightweight", "windowed_ba"), default=None)
     parser.add_argument("--vision-covariance-scale", type=float, default=None)
+    parser.add_argument("--anchor-vision-covariance-scale", type=float, default=None)
+    parser.add_argument("--aux-vision-covariance-scale", type=float, default=None)
     parser.add_argument("--imu-process-covariance-scale", type=float, default=None)
     parser.add_argument("--post-relocalization-covariance-scale", type=float, default=None)
     return parser.parse_args()
@@ -95,8 +99,14 @@ def _apply_second_pass_overrides(config_payloads: dict[str, dict[str, object]], 
         smoother_config["use_aux_tags_in_smoother"] = bool(args.use_aux_tags_in_smoother)
     if args.use_aux_map_for_control is not None:
         control_config["use_aux_map_for_control"] = bool(args.use_aux_map_for_control)
+    if args.smoother_backend is not None:
+        smoother_config["backend"] = str(args.smoother_backend)
     if args.vision_covariance_scale is not None:
         filter_config["vision_covariance_scale"] = float(args.vision_covariance_scale)
+    if args.anchor_vision_covariance_scale is not None:
+        filter_config["anchor_vision_covariance_scale"] = float(args.anchor_vision_covariance_scale)
+    if args.aux_vision_covariance_scale is not None:
+        filter_config["aux_vision_covariance_scale"] = float(args.aux_vision_covariance_scale)
     if args.imu_process_covariance_scale is not None:
         filter_config["imu_process_covariance_scale"] = float(args.imu_process_covariance_scale)
     if args.post_relocalization_covariance_scale is not None:
@@ -166,7 +176,11 @@ def main() -> int:
     try:
         runtime.start()
         summary = runtime.run_until_done()
-        report_payload = generate_isaac_report_artifacts(run_dir, allow_incomplete=bool(args.allow_incomplete_report))
+        report_payload = generate_isaac_report_artifacts(
+            run_dir,
+            allow_incomplete=bool(args.allow_incomplete_report),
+            promote_links=bool(args.promote_global_latest),
+        )
         summary.latest_any_promoted = bool(report_payload.get("latest_any_link"))
         summary.latest_complete_promoted = bool(report_payload.get("latest_complete_link"))
         summary.complete = bool(report_payload.get("complete", False))
@@ -174,6 +188,7 @@ def main() -> int:
         summary_payload["summary"] = summary.as_json()
         summary_payload["report"] = {
             "complete_for_publication": bool(report_payload.get("complete", False)),
+            "promote_links": bool(report_payload.get("promote_links", False)),
             "latest_any_link": report_payload.get("latest_any_link"),
             "latest_complete_link": report_payload.get("latest_complete_link"),
         }

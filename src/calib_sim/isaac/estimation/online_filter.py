@@ -205,8 +205,12 @@ class AnchoredOnlineFilter:
     auxiliary_update_count: int = 0
     auxiliary_rejection_count: int = 0
     vision_covariance_scale: float = 1.0
+    anchor_vision_covariance_scale: float | None = None
+    aux_vision_covariance_scale: float | None = None
     imu_process_covariance_scale: float = 1.0
     post_relocalization_covariance_scale: float = 1.0
+    last_anchor_nis: float | None = None
+    last_auxiliary_nis: float | None = None
     last_anchor_position_world_m: np.ndarray | None = None
     last_anchor_timestamp_s: float | None = None
     auxiliary_rejection_reason_counts: dict[str, int] = field(
@@ -238,6 +242,16 @@ class AnchoredOnlineFilter:
             use_auxiliary_tag_updates=True,
             last_timestamp_s=0.0,
         )
+
+    def _anchor_covariance_scale(self) -> float:
+        if self.anchor_vision_covariance_scale is not None:
+            return max(float(self.anchor_vision_covariance_scale), 1e-6)
+        return max(float(self.vision_covariance_scale), 1e-6)
+
+    def _aux_covariance_scale(self) -> float:
+        if self.aux_vision_covariance_scale is not None:
+            return max(float(self.aux_vision_covariance_scale), 1e-6)
+        return max(float(self.vision_covariance_scale), 1e-6)
 
     def predict(self, imu_packets: tuple[IsaacImuPacket, ...]) -> None:
         if not self.use_imu_prediction:
@@ -299,7 +313,8 @@ class AnchoredOnlineFilter:
         self.state.rotation_wi = measured_rotation_wi.copy()
         self.last_innovation_norm = innovation_norm
         self.covariance = sanitize_covariance(self.covariance * max(1.0 - 0.4 * position_gain, 1e-6))
-        measurement_variance = max(measurement_std_m**2 * max(float(self.vision_covariance_scale), 1e-6), 1e-9)
+        measurement_variance = max(measurement_std_m**2 * self._anchor_covariance_scale(), 1e-9)
+        self.last_anchor_nis = float(innovation.T @ innovation / measurement_variance)
         self.covariance[0:3, 0:3] = np.eye(3, dtype=np.float64) * max(rotation_gain * measurement_variance, 1e-9)
         self.covariance[3:6, 3:6] = np.eye(3, dtype=np.float64) * measurement_variance
         self.covariance[6:9, 6:9] = np.eye(3, dtype=np.float64) * max((2.0 * measurement_std_m) ** 2, 1e-9)
@@ -563,7 +578,14 @@ class AnchoredOnlineFilter:
         self.auxiliary_update_count += len(candidate_positions)
         mean_position = np.mean(np.stack(candidate_positions, axis=0), axis=0)
         relative_position_delta_m = mean_position - self.state.position_world_m
-        effective_trust = float(trust) / max(float(self.vision_covariance_scale), 1.0)
+        accepted_decisions = [decision for decision in decisions if bool(decision.accepted)]
+        accepted_scores = [
+            float(decision.mahalanobis_score)
+            for decision in accepted_decisions
+            if decision.mahalanobis_score is not None
+        ]
+        self.last_auxiliary_nis = None if not accepted_scores else float(np.mean(accepted_scores))
+        effective_trust = float(trust) / max(self._aux_covariance_scale(), 1.0)
         self.state.position_world_m = self.state.position_world_m + effective_trust * relative_position_delta_m
         self.state.rotation_wi = candidate_rotations[0]
         self.last_innovation_norm = float(np.linalg.norm(relative_position_delta_m))
@@ -616,8 +638,16 @@ class AnchoredOnlineFilter:
                 "auxiliary_update_count": float(self.auxiliary_update_count),
                 "auxiliary_rejection_count": float(self.auxiliary_rejection_count),
                 "vision_covariance_scale": float(self.vision_covariance_scale),
+                "anchor_vision_covariance_scale": None
+                if self.anchor_vision_covariance_scale is None
+                else float(self.anchor_vision_covariance_scale),
+                "aux_vision_covariance_scale": None
+                if self.aux_vision_covariance_scale is None
+                else float(self.aux_vision_covariance_scale),
                 "imu_process_covariance_scale": float(self.imu_process_covariance_scale),
                 "post_relocalization_covariance_scale": float(self.post_relocalization_covariance_scale),
+                "last_anchor_nis": None if self.last_anchor_nis is None else float(self.last_anchor_nis),
+                "last_auxiliary_nis": None if self.last_auxiliary_nis is None else float(self.last_auxiliary_nis),
             },
         )
 
@@ -644,6 +674,17 @@ class AnchoredOnlineFilter:
                 "last_auxiliary_native_pose_ready_count": float(self.last_auxiliary_summary.native_pose_ready_count),
                 "last_auxiliary_accepted_count": float(self.last_auxiliary_summary.accepted_count),
                 "last_auxiliary_rejected_count": float(self.last_auxiliary_summary.rejected_count),
+                "vision_covariance_scale": float(self.vision_covariance_scale),
+                "anchor_vision_covariance_scale": None
+                if self.anchor_vision_covariance_scale is None
+                else float(self.anchor_vision_covariance_scale),
+                "aux_vision_covariance_scale": None
+                if self.aux_vision_covariance_scale is None
+                else float(self.aux_vision_covariance_scale),
+                "imu_process_covariance_scale": float(self.imu_process_covariance_scale),
+                "post_relocalization_covariance_scale": float(self.post_relocalization_covariance_scale),
+                "last_anchor_nis": None if self.last_anchor_nis is None else float(self.last_anchor_nis),
+                "last_auxiliary_nis": None if self.last_auxiliary_nis is None else float(self.last_auxiliary_nis),
             },
             auxiliary_rejection_reason_counts=dict(self.auxiliary_rejection_reason_counts),
         )

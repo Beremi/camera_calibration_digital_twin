@@ -32,6 +32,7 @@ class TagEstimate:
 class FixedLagSmoother:
     lag_size: int = 30
     use_auxiliary_tags: bool = True
+    backend_name: str = "lightweight"
     _snapshots: deque[FilterStateSnapshot] = field(default_factory=deque)
     _tag_pose_estimates: dict[int, TagEstimate] = field(default_factory=dict)
     _tag_update_counts: dict[int, int] = field(default_factory=dict)
@@ -45,13 +46,18 @@ class FixedLagSmoother:
         innovation = float(snapshot.innovation_diagnostics.get("last_innovation_norm", 0.0))
         self._cost_trace.append(innovation**2)
 
+    def observe_imu_interval(self, *, imu_packets: tuple[object, ...]) -> None:
+        del imu_packets
+
     def observe_auxiliary_detections(
         self,
         *,
         detections: tuple[IsaacTagDetectionPacket, ...],
         current_state: FilterStateSnapshot,
         anchor_pose_map: dict[int, TagPoseSpec],
+        intrinsics_snapshot: dict[str, object] | None = None,
     ) -> None:
+        del intrinsics_snapshot
         if not self.use_auxiliary_tags:
             for tag_id, tag_pose in anchor_pose_map.items():
                 if tag_id not in self._tag_pose_estimates:
@@ -154,8 +160,8 @@ class FixedLagSmoother:
                 cloned_positions_world_m=(),
                 covariance=covariance,
                 cost_trace=tuple(float(value) for value in self._cost_trace),
-                diagnostics={"lag_size": float(self.lag_size), **self._last_feedback_diagnostics},
-            )
+            diagnostics={"lag_size": float(self.lag_size), **self._last_feedback_diagnostics},
+        )
         latest = self._snapshots[-1]
         positions = tuple(snapshot.position_world_m.copy() for snapshot in self._snapshots)
         covariance = sanitize_covariance(np.mean([snapshot.covariance[:6, :6] for snapshot in self._snapshots], axis=0))
@@ -167,9 +173,15 @@ class FixedLagSmoother:
             covariance=covariance,
             cost_trace=tuple(float(value) for value in self._cost_trace),
             diagnostics={
+                "backend": self.backend_name,
                 "lag_size": float(self.lag_size),
                 "active_tag_count": float(len(self._tag_pose_estimates)),
                 "refinable_tag_count": float(sum(estimate.observation_count >= 5 for estimate in self._tag_pose_estimates.values())),
+                "anchored_window": False,
+                "residual_rmse_before_px": None,
+                "residual_rmse_after_px": None,
+                "covariance_trace_before": float(np.trace(covariance)),
+                "covariance_trace_after": float(np.trace(covariance)),
                 **self._last_feedback_diagnostics,
             },
         )

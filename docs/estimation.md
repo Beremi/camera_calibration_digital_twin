@@ -133,6 +133,7 @@ Current realism note:
 - async IMU emission is decoupled from frame cadence
 - new async runs generate IMU truth at the IMU frame rather than the camera frame
 - the motion truth is still interpolated from frame-step endpoints rather than a separate full physics integrator
+- the current fused IMU factor is a simplified discrete-time interval factor, not a full inertial preintegration model with lever-arm and higher-order covariance propagation
 
 ## Current Checkpoints
 
@@ -158,6 +159,11 @@ scientific artifact bundle:
 - `analysis/uncertainty_calibration_table.csv`
 - `analysis/noise_sensitivity_table.csv`
 - `analysis/factor_breakdown.json`
+
+The repo-level checked-in landing pages for Checkpoint 03 are:
+
+- `docs/checkpoint_03_scientific_report.md`
+- `docs/checkpoint_03_scientific_core.md`
 
 ## Key Artifacts
 
@@ -202,6 +208,7 @@ The two primary markdown reports now include:
 - uncertainty coverage tables for both V1 and V2
 - IMU bias and velocity timelines
 - preset-by-preset ablation comparisons
+- local likelihood-calibration sweep summaries
 
 ## Caveats
 
@@ -209,3 +216,4 @@ The two primary markdown reports now include:
 - the preserved checkpoint IMU stream predates the IMU-frame lever-arm fix and should be read as a compatibility benchmark rather than the scientific headline VI dataset
 - IMU-only dead reckoning drifts massively when initialized without ground-truth velocity and without visual corrections; that is expected and is now explicit in the saved reports
 - the current Laplace uncertainty estimate is now exported for both the visual-only and fused solves
+- the reported scalar 95% radius is a diagonalized marginal summary; NEES and whitened squared error are the stricter covariance-calibration diagnostics

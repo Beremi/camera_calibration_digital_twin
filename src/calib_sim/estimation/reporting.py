@@ -1723,7 +1723,7 @@ def _scientific_report_lines(
         "",
         "### 3.5 Estimator Likelihood Noise",
         "",
-        f"The estimator likelihood is separate from synthetic corruption. Visual whitening uses `sigma_vis={vision_case_sigma(visual_case_payload):.3f} px` on the clean headline solve. IMU whitening uses the resolved preset values plus the current likelihood scale and residual floors exported with the run. Huber is robustification applied after visual whitening; it is not the Gaussian likelihood.",
+        f"The estimator likelihood is separate from synthetic corruption. The optimizer whitens visual residuals with an assumed likelihood sigma of `sigma_vis={assumed_visual_likelihood_sigma_px(dataset):.3f} px`, while the realized robust residual dispersion on this run is `sigma_empirical={empirical_visual_residual_sigma_px(visual_case_payload):.3f} px`. IMU whitening uses the resolved preset values plus the current likelihood scale and residual floors exported with the run. Huber is robustification applied after visual whitening; it is not the Gaussian likelihood.",
         "",
         "### 3.6 Priors / Process Model",
         "",
@@ -1751,6 +1751,8 @@ def _scientific_report_lines(
         "### 3.9 Uncertainty Evaluation",
         "",
         "The report evaluates trajectory and map accuracy, parameter plausibility, factor-normalized residuals, posterior uncertainty calibration, and ideal/nominal/stress sensitivity. Evaluation alignment uses the first common frame for reporting only; inference itself uses only the anchor-pose prior.",
+        "",
+        "The current fused IMU factor is a simplified discrete-time interval factor rather than a full continuous-time preintegration model with lever-arm and higher-order covariance propagation.",
         "## 4. Results",
         "",
         *_table_section(
@@ -1779,7 +1781,7 @@ def _scientific_report_lines(
             block_c_rows,
         ),
         "",
-        "Scalar 95% coverage is reported because it is intuitive, but it should not be over-interpreted. The stricter calibration signal for this checkpoint is the NEES and whitened-error diagnostics exported in the machine-readable uncertainty table.",
+        "Scalar 95% coverage is reported because it is intuitive, but it should not be over-interpreted. The reported scalar 95% radius is a diagonalized marginal summary, not a full Mahalanobis confidence ellipsoid. The stricter calibration signal for this checkpoint is the NEES and whitened-error diagnostics exported in the machine-readable uncertainty table.",
         "",
         *_table_section(
             "### Block D: Noise Sensitivity",
@@ -1788,10 +1790,12 @@ def _scientific_report_lines(
         ),
         *_table_section("## 5. Factor-Normalized Diagnostics", ["Quantity", "Value"], factor_rows),
         *_table_section(
-            "## 6. Likelihood Sweep Summary",
+            "## 6. Local Likelihood-Calibration Sweep Summary",
             ["Sweep family", "Best scale", "Mean pos err [m]", "Mean rot err [deg]", "Mean IMU sq residual / factor", "Position NEES"],
             best_likelihood_rows if best_likelihood_rows else [["not_run", "-", "-", "-", "-", "-"]],
         ),
+        "",
+        "These likelihood sweeps are local calibration probes, not full global hyperparameter optimizations: they reuse the repaired headline solve, perturb one likelihood family at a time, and run only a small number of LM iterations.",
         *_table_section(
             "## 7. Uncertainty Stratification Snapshot",
             ["Method", "Stratum type", "Stratum", "N", "Mean 95% radius [m]", "Empirical 95% coverage [%]", "Position NEES"],
@@ -1831,11 +1835,16 @@ def _scientific_report_lines(
     ]
 
 
-def vision_case_sigma(case_payload: dict[str, Any]) -> float:
+def empirical_visual_residual_sigma_px(case_payload: dict[str, Any]) -> float:
     robust_sigma = case_payload.get("residual_noise", {}).get("robust_axis_sigma_px")
     if robust_sigma is not None:
         return float(robust_sigma)
     return 0.0
+
+
+def assumed_visual_likelihood_sigma_px(dataset: BatchCalibrationDataset) -> float:
+    del dataset
+    return float(load_vision_noise_preset("vision_nominal").corner_noise_std_px)
 
 
 def run_batch_estimation_analysis(run_dir: str | Path, *, refresh_ablations: bool = True) -> dict[str, Any]:

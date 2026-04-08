@@ -1,9 +1,9 @@
 # Checkpoint 03 Scientific Core
 
 This note captures the canonical scientific model introduced in Checkpoint 03.
-It is the repo-level reference for the model and reporting changes that sit
-behind the new async visual-inertial benchmark and the updated scientific
-artifacts generated under each run's `analysis/` directory.
+It is the repo-level reference for the model and reporting changes behind the
+async visual-inertial benchmark and the generated scientific artifacts written
+under each run's `analysis/` directory.
 
 ## Scope
 
@@ -14,7 +14,7 @@ Checkpoint 03 is focused on two changes:
    accelerometer bias for the full sequence
 
 The preserved run `output/interactive_runs/run_20260406_083611` remains the
-compatibility baseline. The new async headline benchmark is configured by:
+compatibility baseline. The async headline benchmark is configured by:
 
 - `config/interactive/tabletop_grab_challenge_vi_headline.yaml`
 - `config/noise/imu_async_ideal.yaml`
@@ -79,6 +79,11 @@ inside the solver. Huber robustification is applied only on top of the whitened
 visual residual and is not itself a Gaussian likelihood. Initialization remains
 separate from priors.
 
+For the clean async headline solve, the optimizer's assumed visual likelihood
+scale is the configured nominal pixel sigma from `vision_nominal`, while the
+reported robust residual sigma in the generated report is an empirical
+post-solve dispersion summary. Those two numbers should not be conflated.
+
 ## Priors and Gauge
 
 The batch graphs use:
@@ -101,6 +106,9 @@ beyond V1 pose and tag marginals to include:
 - global gyro-bias marginal
 - global accelerometer-bias marginal
 
+The exported scalar 95% radius is a diagonalized marginal summary, not a full
+Mahalanobis confidence ellipsoid.
+
 The generated run-level scientific artifacts now include:
 
 - `analysis/checkpoint_03_scientific_report.md`
@@ -120,10 +128,12 @@ Its generated scientific artifacts show:
 
 - visual-only headline accuracy of about `1.04 mm` mean position error and
   `0.043 deg` mean rotation error on the clean async run
-- fused headline accuracy of about `2.98 mm` mean position error and
-  `0.215 deg` mean rotation error on the clean async run
+- fused headline accuracy of about `0.94 mm` mean position error and
+  `0.038 deg` mean rotation error on the clean async run
 - a physically plausible fused mean accelerometer-bias norm below the
   `2.0 m/s^2` plausibility threshold
+- a small mean whitened IMU squared residual per factor on the repaired clean
+  async run
 - a 5-seed async sweep in which fused beats visual-only on mean position error
   under both the `nominal` and `stress` corruption regimes
 
@@ -143,3 +153,13 @@ That distinction matters scientifically: compatibility runs are still useful
 for regression and artifact continuity, but the async headline run is the
 primary basis for judging the physical plausibility of the fused model and its
 reported uncertainty.
+
+## Interpretation Notes
+
+Two additional precision notes matter when discussing Checkpoint 03 publicly:
+
+- the current fused IMU factor is a simplified discrete-time interval factor,
+  not a full inertial preintegration model with lever-arm and higher-order
+  covariance propagation
+- the likelihood sweeps exported under each run's `analysis/` directory are
+  local likelihood-calibration sweeps, not global hyperparameter searches

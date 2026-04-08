@@ -8,6 +8,7 @@ This directory mixes long-lived design notes with the current runnable browser-s
 - [checkpoint_01.md](checkpoint_01.md) — current checkpoint report and metrics
 - [checkpoint_02_batch_estimation.md](checkpoint_02_batch_estimation.md) — batch-estimation milestone report and metrics
 - [checkpoint_02_scientific_report.md](checkpoint_02_scientific_report.md) — scientific-style technical report for the batch-estimation checkpoint
+- [checkpoint_03_scientific_report.md](checkpoint_03_scientific_report.md) — repo-level landing page for the repaired async headline scientific result
 - [checkpoint_03_scientific_core.md](checkpoint_03_scientific_core.md) — canonical scientific model, IMU convention, and Checkpoint 03 artifact map
 - [estimation.md](estimation.md) — estimation package layout, no-GT rule, and artifact map
 - [intermediate_report/README.md](intermediate_report/README.md) — self-contained LaTeX report bundle for Checkpoint 01
@@ -37,6 +38,7 @@ This directory mixes long-lived design notes with the current runnable browser-s
 - [12_pose_estimation_investigation.md](12_pose_estimation_investigation.md)
 - [checkpoint_02_batch_estimation.md](checkpoint_02_batch_estimation.md)
 - [checkpoint_02_scientific_report.md](checkpoint_02_scientific_report.md)
+- [checkpoint_03_scientific_report.md](checkpoint_03_scientific_report.md)
 - [checkpoint_03_scientific_core.md](checkpoint_03_scientific_core.md)
 - [estimation.md](estimation.md)
 - [intermediate_report/README.md](intermediate_report/README.md)

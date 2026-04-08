@@ -7,7 +7,7 @@ This repository is now in a hybrid state:
 
 The current frozen checkpoint is documented in [docs/checkpoint_01.md](docs/checkpoint_01.md). It corresponds to the corrected analysis run `output/interactive_runs/run_20260406_083611` and represents the first checkpoint where the interactive app, recording pipeline, visual pose fitting, and IMU trajectory reconstruction are all working together cleanly enough to preserve.
 
-The new batch-estimation milestone is documented in [docs/checkpoint_02_batch_estimation.md](docs/checkpoint_02_batch_estimation.md) and [docs/estimation.md](docs/estimation.md).
+The new batch-estimation milestones are documented in [docs/checkpoint_02_batch_estimation.md](docs/checkpoint_02_batch_estimation.md), [docs/checkpoint_03_scientific_report.md](docs/checkpoint_03_scientific_report.md), and [docs/estimation.md](docs/estimation.md).
 
 ## Checkpoint 01 State
 
@@ -172,6 +172,8 @@ Start with:
 - [docs/README.md](docs/README.md)
 - [docs/checkpoint_01.md](docs/checkpoint_01.md)
 - [docs/checkpoint_02_batch_estimation.md](docs/checkpoint_02_batch_estimation.md)
+- [docs/checkpoint_03_scientific_report.md](docs/checkpoint_03_scientific_report.md)
+- [docs/checkpoint_03_scientific_core.md](docs/checkpoint_03_scientific_core.md)
 - [docs/estimation.md](docs/estimation.md)
 - [docs/intermediate_report/README.md](docs/intermediate_report/README.md)
 - [docs/app.md](docs/app.md)

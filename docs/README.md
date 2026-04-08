@@ -11,6 +11,9 @@ This directory now mixes three things:
 - [../README.md](../README.md) — top-level setup, bootstrap, and run commands
 - [isaac_first_pass_expert_handoff.md](isaac_first_pass_expert_handoff.md) — expert-facing map of the current first-pass Isaac branch, local artifacts, and next technical risks
 - [isaac_first_pass_results.md](isaac_first_pass_results.md) — canonical first-pass suite run IDs, publication inputs, and regeneration commands
+- [isaac_first_pass_summary.md](isaac_first_pass_summary.md) — short scientific summary of the frozen first-pass suite
+- [isaac_first_pass_publication_checklist.md](isaac_first_pass_publication_checklist.md) — freeze/build checklist for the suite-backed paper
+- [first_pass_suite_lock.json](first_pass_suite_lock.json) — authoritative machine-readable lock for the frozen first-pass suite
 - [checkpoint_01.md](checkpoint_01.md) — current checkpoint report and metrics
 - [checkpoint_02_batch_estimation.md](checkpoint_02_batch_estimation.md) — batch-estimation milestone report and metrics
 - [checkpoint_02_scientific_report.md](checkpoint_02_scientific_report.md) — scientific-style technical report for the batch-estimation checkpoint
@@ -26,6 +29,7 @@ This directory now mixes three things:
 
 - `checkpoint_01.md` is the current authoritative frozen report for the interactive sim state represented by `output/interactive_runs/run_20260406_083611`.
 - as of April 8, 2026, the first-pass Isaac paper path is suite-driven through `output/isaac_runs/latest_first_pass_suite`, with `output/isaac_runs/latest_complete` retained as the per-run fallback.
+- the first-pass freeze/build path now runs through `scripts/verify_isaac_first_pass_suite.py` and `scripts/build_isaac_first_pass_publication.py`.
 - the Isaac publication path now lives in `report_tex/`; `docs/intermediate_report/` remains the historical Checkpoint 01 browser report track.
 - `scripts/replay_isaac_anchor_vio.py` is analysis/report regeneration only on this branch; it is not a raw-log estimator re-solve path.
 - `11_interactive_pose_estimation_pipeline.md` and `12_pose_estimation_investigation.md` are historical development notes. They remain useful for understanding how the estimator evolved, but their old metrics are superseded by `checkpoint_01.md`.

@@ -138,6 +138,8 @@ def generate_first_pass_suite_artifacts(
     *,
     matrix_seed: int = 7,
     reproducibility_seeds: tuple[int, ...] = (11, 17, 23, 31, 47),
+    regenerate_run_artifacts: bool = True,
+    artifact_source: str = "latest_first_pass_suite",
 ) -> dict[str, Any]:
     root = Path(output_root).resolve()
     suite_dir = root / "latest_first_pass_suite"
@@ -169,7 +171,8 @@ def generate_first_pass_suite_artifacts(
         run_dir = root / run_id
         if not run_dir.exists():
             raise ValueError(f"Required first-pass benchmark run is missing: {run_dir}")
-        generate_isaac_report_artifacts(run_dir, allow_incomplete=False)
+        if regenerate_run_artifacts or not (run_dir / "analysis" / "metrics.json").exists():
+            generate_isaac_report_artifacts(run_dir, allow_incomplete=False)
         runs[(estimator_mode, controller_mode, actuation_name, seed)] = _load_metrics(run_dir)
 
     canonical_metrics = runs[("fused", "closed-loop", "servo_nominal", matrix_seed)]
@@ -221,6 +224,8 @@ def generate_first_pass_suite_artifacts(
             {
                 "estimator_mode": estimator_mode,
                 "controller_mode": "closed-loop",
+                "seeds": [int(seed) for seed in reproducibility_seeds],
+                "run_ids": [str(value["run_id"]) for value in values],
                 "sample_count": len(values),
                 "mean_position_error_m": position_mean,
                 "std_position_error_m": position_std,
@@ -256,12 +261,47 @@ def generate_first_pass_suite_artifacts(
                 "mean_actuator_tracking_error": metrics["control"]["mean_actuator_tracking_error"],
             }
         )
+    uncertainty_rows = [
+        {
+            "run_id": canonical_run_id,
+            "label": "Canonical fused / closed-loop",
+            "mean_position_radius_95_m": canonical_metrics["uncertainty_calibration"]["mean_position_radius_95_m"],
+            "empirical_95_coverage_percent": canonical_metrics["uncertainty_calibration"]["empirical_95_coverage_percent"],
+            "pose_nees": canonical_metrics["uncertainty_calibration"]["pose_nees"],
+            "sigma_error_correlation": canonical_metrics["uncertainty_calibration"]["sigma_error_correlation"],
+        }
+    ]
+    residual_rows = [
+        {
+            "run_id": canonical_run_id,
+            "label": "Canonical fused / closed-loop",
+            "mean_reprojection_rmse_px": canonical_metrics["residuals"]["mean_reprojection_rmse_px"],
+            "p95_reprojection_rmse_px": canonical_metrics["residuals"]["p95_reprojection_rmse_px"],
+            "mean_anchor_innovation_norm": canonical_metrics["residuals"]["mean_anchor_innovation_norm"],
+            "mean_innovation_norm": canonical_metrics["residuals"]["mean_innovation_norm"],
+            "anchor_pnp_success_fraction": canonical_metrics["residuals"]["anchor_pnp_success_fraction"],
+            "fallback_only_frame_fraction": canonical_metrics["residuals"]["fallback_only_frame_fraction"],
+        }
+    ]
+    map_quality_rows = [
+        {
+            "run_id": canonical_run_id,
+            "label": "Canonical fused / closed-loop",
+            "mean_auxiliary_tag_position_error_m": canonical_metrics["map_quality"]["mean_auxiliary_tag_position_error_m"],
+            "p95_auxiliary_tag_position_error_m": canonical_metrics["map_quality"]["p95_auxiliary_tag_position_error_m"],
+            "anchor_relocalization_count": canonical_metrics["map_quality"]["anchor_relocalization_count"],
+            "anchor_visible_fraction": canonical_metrics["map_quality"]["anchor_visible_fraction"],
+        }
+    ]
 
     _write_csv(analysis_dir / "first_pass_runtime_table.csv", completeness_rows)
     _write_csv(analysis_dir / "first_pass_matrix_table.csv", matrix_rows)
     _write_csv(analysis_dir / "first_pass_reproducibility_table.csv", reproducibility_rows)
     _write_csv(analysis_dir / "first_pass_controller_table.csv", controller_rows)
     _write_csv(analysis_dir / "first_pass_actuation_table.csv", actuation_rows)
+    _write_csv(analysis_dir / "first_pass_uncertainty_table.csv", uncertainty_rows)
+    _write_csv(analysis_dir / "first_pass_residual_table.csv", residual_rows)
+    _write_csv(analysis_dir / "first_pass_map_quality_table.csv", map_quality_rows)
 
     completeness_tex_rows = [
         rf"Canonical run id & {_tex_value(canonical_run_id)} \\",
@@ -293,8 +333,21 @@ def generate_first_pass_suite_artifacts(
         rf"{_tex_value(row['actuation_preset'])} & {_tex_value(row['mean_waypoint_error_m'])} & {_tex_value(row['completion_fraction'], percent=True)} & {_tex_value(row['ik_failure_fraction'], percent=True)} & {_tex_value(row['mean_actuator_tracking_error'])} \\"
         for row in actuation_rows
     ]
+    uncertainty_tex_rows = [
+        rf"{_tex_value(row['label'])} & {_tex_value(row['mean_position_radius_95_m'])} & {_tex_value(row['empirical_95_coverage_percent'], percent=True)} & {_tex_value(row['pose_nees'])} & {_tex_value(row['sigma_error_correlation'])} \\"
+        for row in uncertainty_rows
+    ]
+    residual_tex_rows = [
+        rf"{_tex_value(row['label'])} & {_tex_value(row['mean_reprojection_rmse_px'])} & {_tex_value(row['p95_reprojection_rmse_px'])} & {_tex_value(row['mean_anchor_innovation_norm'])} & {_tex_value(row['mean_innovation_norm'])} & {_tex_value(row['anchor_pnp_success_fraction'], percent=True)} & {_tex_value(row['fallback_only_frame_fraction'], percent=True)} \\"
+        for row in residual_rows
+    ]
+    map_quality_tex_rows = [
+        rf"{_tex_value(row['label'])} & {_tex_value(row['mean_auxiliary_tag_position_error_m'])} & {_tex_value(row['p95_auxiliary_tag_position_error_m'])} & {_tex_value(row['anchor_relocalization_count'])} & {_tex_value(row['anchor_visible_fraction'], percent=True)} \\"
+        for row in map_quality_rows
+    ]
 
-    (report_data_dir / "paper_artifacts.tex").write_text(
+    paper_artifacts_path = report_data_dir / "paper_artifacts.tex"
+    paper_artifacts_path.write_text(
         "\n\n".join(
             [
                 _macro_definition("IsaacFirstPassCompletenessRows", completeness_tex_rows),
@@ -302,6 +355,9 @@ def generate_first_pass_suite_artifacts(
                 _macro_definition("IsaacFirstPassReproducibilityRows", reproducibility_tex_rows),
                 _macro_definition("IsaacFirstPassControllerRows", controller_tex_rows),
                 _macro_definition("IsaacFirstPassActuationRows", actuation_tex_rows),
+                _macro_definition("IsaacFirstPassUncertaintyRows", uncertainty_tex_rows),
+                _macro_definition("IsaacFirstPassResidualRows", residual_tex_rows),
+                _macro_definition("IsaacFirstPassMapRows", map_quality_tex_rows),
             ]
         )
         + "\n",
@@ -340,20 +396,31 @@ def generate_first_pass_suite_artifacts(
         canonical_metrics["control"],
     )
 
+    placeholders_remaining = r"\ArtifactPending{}" in paper_artifacts_path.read_text(encoding="utf-8")
     summary = {
-        "schema_version": 1,
+        "schema_version": 2,
         "canonical_run_id": canonical_run_id,
         "matrix_runs": matrix_rows,
         "reproducibility": reproducibility_rows,
         "actuation": actuation_rows,
         "controller": controller_rows,
+        "uncertainty": uncertainty_rows,
+        "residuals": residual_rows,
+        "map_quality": map_quality_rows,
+        "publication": {
+            "artifact_source": str(artifact_source),
+            "suite_dir": str(suite_dir),
+            "report_data_dir": str(report_data_dir),
+            "paper_artifacts_tex": str(paper_artifacts_path),
+            "placeholders_remaining": bool(placeholders_remaining),
+        },
     }
     (analysis_dir / "suite_summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return {
         "suite_dir": str(suite_dir),
         "canonical_run_id": canonical_run_id,
         "summary_json": str(analysis_dir / "suite_summary.json"),
-        "paper_artifacts_tex": str(report_data_dir / "paper_artifacts.tex"),
+        "paper_artifacts_tex": str(paper_artifacts_path),
     }
 
 

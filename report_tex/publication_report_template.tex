@@ -63,6 +63,15 @@ Canonical fused / closed-loop & \ArtifactPending{} & \ArtifactPending{} & \Artif
 none & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
 servo\_nominal & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
 }
+\newcommand{\IsaacFirstPassUncertaintyRows}{%
+Canonical fused / closed-loop & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\IsaacFirstPassResidualRows}{%
+Canonical fused / closed-loop & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\IsaacFirstPassMapRows}{%
+Canonical fused / closed-loop & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
 \newcommand{\vect}[1]{\boldsymbol{#1}}
 \newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
 \newcommand{\trans}{^{\mathsf T}}
@@ -404,6 +413,57 @@ Run & IK fail [\%] & Dominant reason & Anchor visible [\%] & Relocalizations & M
 Actuation & Mean wp err [m] & Completion [\%] & IK fail [\%] & Mean actuator err. \\
 \midrule
 \IsaacFirstPassActuationRows
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Uncertainty calibration}
+\begin{table}[H]
+\centering
+\caption{Numeric uncertainty calibration summary for the canonical fused / closed-loop run.}
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+Run & Mean 95\% rad. [m] & Empirical 95\% cov. [\%] & Mean pose NEES & Sigma/error corr. \\
+\midrule
+\IsaacFirstPassUncertaintyRows
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Residual quality}
+\begin{table}[H]
+\centering
+\caption{Residual and observation-quality summary for the canonical fused / closed-loop run.}
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+Run & Mean reproj. [px] & P95 reproj. [px] & Mean anchor innov. & Mean innov. & Anchor PnP [\%] & Fallback-only [\%] \\
+\midrule
+\IsaacFirstPassResidualRows
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Map quality}
+\begin{table}[H]
+\centering
+\caption{Auxiliary-tag map quality for the canonical fused / closed-loop run.}
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+Run & Mean aux err. [m] & P95 aux err. [m] & Relocalizations & Anchor visible [\%] \\
+\midrule
+\IsaacFirstPassMapRows
 \bottomrule
 \end{tabular}%
 }

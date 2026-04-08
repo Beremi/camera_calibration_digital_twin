@@ -1,0 +1,57 @@
+{
+  "branch_name": "feature/isaac-runtime-first-pass",
+  "canonical_run_id": "first_pass_fused_closed-loop_servo_nominal_seed_007",
+  "expected_actuation_run_ids": [
+    "first_pass_fused_closed-loop_none_seed_007",
+    "first_pass_fused_closed-loop_servo_nominal_seed_007"
+  ],
+  "expected_matrix_run_ids": [
+    "first_pass_visual_open-loop_servo_nominal_seed_007",
+    "first_pass_visual_closed-loop_servo_nominal_seed_007",
+    "first_pass_fused_open-loop_servo_nominal_seed_007",
+    "first_pass_fused_closed-loop_servo_nominal_seed_007"
+  ],
+  "expected_reproducibility": {
+    "fused_closed_loop": {
+      "run_ids": [
+        "first_pass_fused_closed-loop_servo_nominal_seed_011",
+        "first_pass_fused_closed-loop_servo_nominal_seed_017",
+        "first_pass_fused_closed-loop_servo_nominal_seed_023",
+        "first_pass_fused_closed-loop_servo_nominal_seed_031",
+        "first_pass_fused_closed-loop_servo_nominal_seed_047"
+      ],
+      "seeds": [
+        11,
+        17,
+        23,
+        31,
+        47
+      ]
+    },
+    "visual_closed_loop": {
+      "run_ids": [
+        "first_pass_visual_closed-loop_servo_nominal_seed_011",
+        "first_pass_visual_closed-loop_servo_nominal_seed_017",
+        "first_pass_visual_closed-loop_servo_nominal_seed_023",
+        "first_pass_visual_closed-loop_servo_nominal_seed_031",
+        "first_pass_visual_closed-loop_servo_nominal_seed_047"
+      ],
+      "seeds": [
+        11,
+        17,
+        23,
+        31,
+        47
+      ]
+    }
+  },
+  "frozen_date": "2026-04-08",
+  "matrix_seed": 7,
+  "reproducibility_seeds": [
+    11,
+    17,
+    23,
+    31,
+    47
+  ]
+}

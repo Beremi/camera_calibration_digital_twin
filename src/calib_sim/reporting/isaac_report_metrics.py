@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 
 from calib_sim.isaac.runtime.replay import load_replay_bundle
@@ -46,6 +47,17 @@ def _vector_or_none(value: Any) -> np.ndarray | None:
     return np.asarray([float(value[0]), float(value[1]), float(value[2])], dtype=np.float64)
 
 
+def _matrix3_or_none(value: Any) -> np.ndarray | None:
+    if not isinstance(value, (list, tuple)) or len(value) < 3:
+        return None
+    rows: list[list[float]] = []
+    for row in value[:3]:
+        if not isinstance(row, (list, tuple)) or len(row) < 3:
+            return None
+        rows.append([float(row[0]), float(row[1]), float(row[2])])
+    return np.asarray(rows, dtype=np.float64)
+
+
 def _csv_vector_or_none(row: dict[str, Any], x_key: str, y_key: str, z_key: str) -> np.ndarray | None:
     if x_key not in row or y_key not in row or z_key not in row:
         return None
@@ -77,6 +89,16 @@ def _position_from_tag_gt(row: dict[str, Any]) -> np.ndarray | None:
     return None
 
 
+def _rotation_from_tag_gt(row: dict[str, Any]) -> np.ndarray | None:
+    rotation = _matrix3_or_none(row.get("rotation_wt"))
+    if rotation is not None:
+        return rotation
+    pose = row.get("pose_world")
+    if isinstance(pose, list) and len(pose) >= 3:
+        return _matrix3_or_none([pose[0][:3], pose[1][:3], pose[2][:3]])
+    return None
+
+
 def _tag_map_error(gt_payload: dict[str, Any] | None, smoother_rows: list[dict[str, Any]]) -> float | None:
     if not gt_payload:
         return None
@@ -97,6 +119,131 @@ def _tag_map_error(gt_payload: dict[str, Any] | None, smoother_rows: list[dict[s
             estimate = np.asarray([float(pose[0][3]), float(pose[1][3]), float(pose[2][3])], dtype=np.float64)
             errors.append(float(np.linalg.norm(estimate - gt_position)))
     return None if not errors else float(np.mean(errors))
+
+
+def _auxiliary_tag_position_error_stats(
+    gt_payload: dict[str, Any] | None,
+    smoother_rows: list[dict[str, Any]],
+    *,
+    anchor_tag_id: int,
+) -> dict[str, float | None]:
+    if not gt_payload:
+        return {
+            "mean_auxiliary_tag_position_error_m": None,
+            "p95_auxiliary_tag_position_error_m": None,
+            "auxiliary_tag_count": 0.0,
+        }
+    gt_tags = {
+        int(tag["tag_id"]): _position_from_tag_gt(tag)
+        for tag in gt_payload.get("tags", [])
+        if isinstance(tag, dict) and "tag_id" in tag and int(tag["tag_id"]) != int(anchor_tag_id)
+    }
+    errors: list[float] = []
+    observed_auxiliary_tag_ids: set[int] = set()
+    for row in smoother_rows:
+        active_tag_poses = row.get("active_tag_poses", {})
+        if not isinstance(active_tag_poses, dict):
+            continue
+        for tag_id_text, pose in active_tag_poses.items():
+            tag_id = int(tag_id_text)
+            gt_position = gt_tags.get(tag_id)
+            if gt_position is None or not isinstance(pose, list) or len(pose) < 4:
+                continue
+            estimate = np.asarray([float(pose[0][3]), float(pose[1][3]), float(pose[2][3])], dtype=np.float64)
+            errors.append(float(np.linalg.norm(estimate - gt_position)))
+            observed_auxiliary_tag_ids.add(tag_id)
+    return {
+        "mean_auxiliary_tag_position_error_m": None if not errors else float(np.mean(errors)),
+        "p95_auxiliary_tag_position_error_m": _safe_percentile(errors, 95.0),
+        "auxiliary_tag_count": float(len(observed_auxiliary_tag_ids)),
+    }
+
+
+def _reprojection_error_stats(
+    camera_frames: list[dict[str, Any]],
+    detections: list[dict[str, Any]],
+    filter_rows: list[dict[str, Any]],
+    gt_payload: dict[str, Any] | None,
+) -> dict[str, float | None]:
+    if not camera_frames or not detections or not filter_rows or not gt_payload:
+        return {
+            "mean_reprojection_rmse_px": None,
+            "p95_reprojection_rmse_px": None,
+            "reprojection_sample_count": 0.0,
+        }
+    gt_tag_poses: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    for tag in gt_payload.get("tags", []):
+        if not isinstance(tag, dict) or "tag_id" not in tag:
+            continue
+        position = _position_from_tag_gt(tag)
+        rotation = _rotation_from_tag_gt(tag)
+        if position is None or rotation is None:
+            continue
+        gt_tag_poses[int(tag["tag_id"])] = (position, rotation)
+    frame_by_index = {
+        int(row["frame_index"]): row for row in camera_frames if "frame_index" in row and "intrinsics_snapshot" in row
+    }
+    filter_samples: list[tuple[float, np.ndarray, np.ndarray]] = []
+    for row in filter_rows:
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        position = _vector_or_none(row.get("position_world_m"))
+        rotation = _matrix3_or_none(row.get("rotation_wi"))
+        if timestamp is None or position is None or rotation is None:
+            continue
+        filter_samples.append((timestamp, position, rotation))
+    if not filter_samples:
+        return {
+            "mean_reprojection_rmse_px": None,
+            "p95_reprojection_rmse_px": None,
+            "reprojection_sample_count": 0.0,
+        }
+    filter_times = np.asarray([sample[0] for sample in filter_samples], dtype=np.float64)
+    rmse_values_px: list[float] = []
+    for detection in detections:
+        frame = frame_by_index.get(int(detection.get("frame_index", -1)))
+        tag_pose = gt_tag_poses.get(int(detection.get("tag_id", -1)))
+        timestamp = _float_or_none(detection.get("timestamp_s"))
+        local_tag_points_m = detection.get("local_tag_points_m")
+        corners_xy = detection.get("corners_xy")
+        if frame is None or tag_pose is None or timestamp is None:
+            continue
+        local_points = np.asarray(local_tag_points_m, dtype=np.float64)
+        observed_corners = np.asarray(corners_xy, dtype=np.float64)
+        if local_points.shape != (4, 3) or observed_corners.shape != (4, 2):
+            continue
+        intrinsics = frame.get("intrinsics_snapshot", {})
+        fx = _float_or_none(intrinsics.get("fx_px"))
+        fy = _float_or_none(intrinsics.get("fy_px"))
+        cx = _float_or_none(intrinsics.get("cx_px"))
+        cy = _float_or_none(intrinsics.get("cy_px"))
+        if fx is None or fy is None or cx is None or cy is None:
+            continue
+        camera_matrix = np.array([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]], dtype=np.float64)
+        distortion = intrinsics.get("distortion_coefficients", [0.0, 0.0, 0.0, 0.0, 0.0])
+        dist_coeffs = np.asarray(distortion, dtype=np.float64).reshape(-1, 1)
+        filter_index = int(np.argmin(np.abs(filter_times - timestamp)))
+        _, camera_position_world_m, rotation_wc = filter_samples[filter_index]
+        # `rotation_wi` in the first-pass filter logs is the world-from-camera
+        # rotation in the OpenCV camera frame used by solvePnP detections.
+        rotation_cw = rotation_wc.T
+        translation_cw = -rotation_cw @ camera_position_world_m.reshape(3)
+        rvec_cw, _ = cv2.Rodrigues(rotation_cw)
+        tag_position_world_m, rotation_wt = tag_pose
+        world_points = (rotation_wt @ local_points.T).T + tag_position_world_m.reshape(1, 3)
+        projected_points, _ = cv2.projectPoints(
+            world_points,
+            rvec_cw,
+            translation_cw.reshape(3, 1),
+            camera_matrix,
+            dist_coeffs,
+        )
+        projected_corners = np.asarray(projected_points, dtype=np.float64).reshape(-1, 2)
+        rmse_values_px.append(float(np.sqrt(np.mean(np.sum((projected_corners - observed_corners) ** 2, axis=1)))))
+    return {
+        "mean_reprojection_rmse_px": None if not rmse_values_px else float(np.mean(rmse_values_px)),
+        "p95_reprojection_rmse_px": _safe_percentile(rmse_values_px, 95.0),
+        "reprojection_sample_count": float(len(rmse_values_px)),
+    }
 
 
 def _nearest_position_matches(
@@ -293,6 +440,17 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
     command_rows = bundle.raw["commands"]
     controller_diagnostics_rows = bundle.raw["controller_diagnostics"]
     camera_gt_rows = bundle.gt.get("camera_gt", []) if bundle.gt else []
+    reprojection_stats = _reprojection_error_stats(
+        bundle.raw["camera_frames"],
+        bundle.raw["detections"],
+        filter_rows,
+        bundle.gt.get("tag_gt", {}) if bundle.gt else {},
+    )
+    auxiliary_tag_position_stats = _auxiliary_tag_position_error_stats(
+        bundle.gt.get("tag_gt", {}) if bundle.gt else {},
+        smoother_rows,
+        anchor_tag_id=int(bundle.manifest.anchor_tag_id),
+    )
 
     command_values = [abs(value) for row in command_rows if (value := _first_command_value(row)) is not None]
     max_command = max(command_values) if command_values else 0.0
@@ -469,7 +627,8 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
             "p95_position_error_m": _safe_percentile(position_errors, 95.0),
             "max_position_error_m": None if not position_errors else float(np.max(position_errors)),
             "mean_rotation_error_deg": None,
-            "mean_reprojection_error_px": None,
+            "mean_reprojection_error_px": reprojection_stats["mean_reprojection_rmse_px"],
+            "p95_reprojection_error_px": reprojection_stats["p95_reprojection_rmse_px"],
             "map_error_m": _tag_map_error(bundle.gt.get("tag_gt", {}) if bundle.gt else {}, smoother_rows),
         },
         "parameters": {
@@ -479,6 +638,15 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
         "residuals": {
             "mean_visual_residual_sq": None,
             "mean_imu_residual_sq": None,
+            "mean_reprojection_rmse_px": reprojection_stats["mean_reprojection_rmse_px"],
+            "p95_reprojection_rmse_px": reprojection_stats["p95_reprojection_rmse_px"],
+            "reprojection_sample_count": reprojection_stats["reprojection_sample_count"],
+            "mean_anchor_innovation_norm": None
+            if not anchor_innovation_norms
+            else float(np.mean(anchor_innovation_norms)),
+            "mean_innovation_norm": None if not innovation_norms else float(np.mean(innovation_norms)),
+            "anchor_pnp_success_fraction": float(anchor_pnp_success_frames / total_frames),
+            "fallback_only_frame_fraction": float(fallback_only_frames / total_frames),
         },
         "uncertainty_calibration": {
             "mean_position_radius_95_m": None if not position_radii else float(np.mean(position_radii)),
@@ -488,6 +656,13 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
             "pose_nees": None if not position_nees_values else float(np.mean(position_nees_values)),
             "velocity_nees": None,
             "sigma_error_correlation": _safe_correlation(matched_radii, matched_error_subset),
+        },
+        "map_quality": {
+            "mean_auxiliary_tag_position_error_m": auxiliary_tag_position_stats["mean_auxiliary_tag_position_error_m"],
+            "p95_auxiliary_tag_position_error_m": auxiliary_tag_position_stats["p95_auxiliary_tag_position_error_m"],
+            "auxiliary_tag_count": auxiliary_tag_position_stats["auxiliary_tag_count"],
+            "anchor_relocalization_count": float(anchor_relocalization_count),
+            "anchor_visible_fraction": anchor_visible_fraction,
         },
         "control": {
             "saturation_fraction": float(saturation_fraction),

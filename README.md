@@ -14,6 +14,10 @@ As of April 8, 2026, the first-pass Isaac publication workflow is driven by:
 
 - `output/isaac_runs/latest_first_pass_suite`
 
+The frozen first-pass suite definition is checked in at:
+
+- `docs/first_pass_suite_lock.json`
+
 The per-run fallback publication input remains:
 
 - `output/isaac_runs/latest_complete`
@@ -122,6 +126,13 @@ export OMNI_KIT_ACCEPT_EULA=YES
 python scripts/run_isaac_ablation_suite.py --headless
 ```
 
+To verify that the frozen suite still matches the publication lock:
+
+```bash
+source .venv/bin/activate
+python scripts/verify_isaac_first_pass_suite.py
+```
+
 To regenerate per-run report artifacts for a finished Isaac run:
 
 ```bash
@@ -136,13 +147,18 @@ source .venv/bin/activate
 python scripts/replay_isaac_anchor_vio.py output/isaac_runs/first_pass_fused_closed-loop_servo_nominal_seed_007
 ```
 
-To compile the paper against the suite bundle:
+To verify, rebuild, and compile the frozen first-pass publication bundle:
 
 ```bash
 source .venv/bin/activate
-cd report_tex
-latexmk -pdf -interaction=nonstopmode publication_report_template.tex
+python scripts/build_isaac_first_pass_publication.py
 ```
+
+The short written freeze outputs are:
+
+- `docs/isaac_first_pass_results.md`
+- `docs/isaac_first_pass_summary.md`
+- `docs/isaac_first_pass_publication_checklist.md`
 
 ## Run Tests
 

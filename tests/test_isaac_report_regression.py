@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -23,6 +24,7 @@ pytestmark = pytest.mark.skipif(
 def test_publication_report_template_compiles_from_source(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     source_dir = repo_root / "report_tex"
+    build_summary_path = repo_root / "output" / "isaac_runs" / "latest_first_pass_suite" / "analysis" / "publication_build_summary.json"
     target_dir = tmp_path / "report_tex"
     shutil.copytree(source_dir, target_dir)
     tex_path = target_dir / "publication_report_template.tex"
@@ -36,6 +38,9 @@ def test_publication_report_template_compiles_from_source(tmp_path: Path) -> Non
     assert "ik_failure_timeline.png" in tex_source
     assert "system_architecture.png" in tex_source
     assert "current workspace does not include the Isaac Sim Python modules" not in tex_source
+    if build_summary_path.exists():
+        build_summary = json.loads(build_summary_path.read_text(encoding="utf-8"))
+        assert build_summary["artifact_source"] == "latest_first_pass_suite"
 
     for generated_name in (
         "publication_report_template.aux",

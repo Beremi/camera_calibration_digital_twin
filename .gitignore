@@ -8,6 +8,10 @@ __pycache__/
 *.egg-info/
 
 output/interactive_runs/
+output/isaac_runs/*
+!output/isaac_runs/run_20260408_062541/
+!output/isaac_runs/run_20260408_062541/**
+!output/isaac_runs/latest
 *.finalizing.mp4
 
 docs/**/*.aux
@@ -25,6 +29,7 @@ docs/**/*.synctex.gz
 docs/**/*.toc
 
 EXPERT_HANDOFF_CHECKPOINT_01.md
+agent_implementation_instructions.md
 
 .DS_Store
 report_tex/publication_report_template.bbl

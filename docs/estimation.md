@@ -33,6 +33,16 @@ The Isaac runtime uses a separate first-pass online estimation/control stack:
 - fixed-lag smoother under `src/calib_sim/isaac/estimation/fixed_lag_smoother.py`
 - raw / GT / estimate / uncertainty logging under `src/calib_sim/isaac/logging/`
 
+The active second-pass branch adds estimator-quality diagnosis on top of that
+runtime:
+
+- `scripts/analyze_isaac_estimator_quality.py` writes a dedicated diagnostic
+  bundle per run
+- `raw/estimator_input.jsonl` now carries per-frame auxiliary-update decisions
+  and rejection reasons
+- `scripts/run_isaac_anchor_vio.py` now exposes aux-tag isolation switches and
+  multiplicative covariance scaling overrides for second-pass diagnosis
+
 As of April 8, 2026, the publication report prefers:
 
 - `output/isaac_runs/latest_first_pass_suite/analysis/report_data/`

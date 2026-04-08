@@ -12,6 +12,22 @@ def _matrix_json(matrix: np.ndarray) -> list[list[float]]:
     return [[float(value) for value in row] for row in np.asarray(matrix, dtype=np.float64)]
 
 
+def _json_compatible(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return np.asarray(value, dtype=np.float64).tolist()
+    if isinstance(value, dict):
+        return {str(key): _json_compatible(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_compatible(item) for item in value]
+    if isinstance(value, (np.floating, float)):
+        return float(value)
+    if isinstance(value, (np.integer, int)):
+        return int(value)
+    if isinstance(value, (np.bool_, bool)):
+        return bool(value)
+    return value
+
+
 @dataclass(slots=True)
 class MotionState:
     rotation_wi: np.ndarray
@@ -33,7 +49,8 @@ class FilterStateSnapshot:
     covariance: np.ndarray
     anchor_visible: bool = False
     mode: str = "visual_inertial_anchor_plus_aux_tags"
-    innovation_diagnostics: dict[str, float] = field(default_factory=dict)
+    innovation_diagnostics: dict[str, Any] = field(default_factory=dict)
+    auxiliary_rejection_reason_counts: dict[str, int] = field(default_factory=dict)
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -48,7 +65,10 @@ class FilterStateSnapshot:
             "anchor_visible": bool(self.anchor_visible),
             "estimator_mode": self.mode,
             "mode": self.mode,
-            "innovation_diagnostics": {str(key): float(value) for key, value in self.innovation_diagnostics.items()},
+            "innovation_diagnostics": _json_compatible(self.innovation_diagnostics),
+            "auxiliary_rejection_reason_counts": {
+                str(key): int(value) for key, value in self.auxiliary_rejection_reason_counts.items()
+            },
         }
 
 
@@ -60,7 +80,7 @@ class SmootherStateSnapshot:
     cloned_positions_world_m: tuple[np.ndarray, ...]
     covariance: np.ndarray
     cost_trace: tuple[float, ...] = ()
-    diagnostics: dict[str, float] = field(default_factory=dict)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -73,7 +93,7 @@ class SmootherStateSnapshot:
             ],
             "covariance": _matrix_json(self.covariance),
             "cost_trace": [float(value) for value in self.cost_trace],
-            "diagnostics": {str(key): float(value) for key, value in self.diagnostics.items()},
+            "diagnostics": _json_compatible(self.diagnostics),
         }
 
 
@@ -86,7 +106,7 @@ class UncertaintySnapshot:
     bias_covariance: np.ndarray
     position_radius_95_m: float
     velocity_radius_95_mps: float
-    diagnostics: dict[str, float] = field(default_factory=dict)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -97,5 +117,5 @@ class UncertaintySnapshot:
             "bias_covariance": _matrix_json(self.bias_covariance),
             "position_radius_95_m": float(self.position_radius_95_m),
             "velocity_radius_95_mps": float(self.velocity_radius_95_mps),
-            "diagnostics": {str(key): float(value) for key, value in self.diagnostics.items()},
+            "diagnostics": _json_compatible(self.diagnostics),
         }

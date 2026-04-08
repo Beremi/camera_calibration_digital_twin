@@ -1,6 +1,7 @@
 name: anchored_path_tracking
 path_frame: W
 command_space: anchored_position_delta
+use_aux_map_for_control: true
 proportional_gain: 0.6
 max_command_abs: 0.03
 max_position_step_m: 0.02

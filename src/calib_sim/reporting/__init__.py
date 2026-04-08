@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from calib_sim.reporting.isaac_report_figures import write_isaac_report_figures
-from calib_sim.reporting.isaac_report_metrics import compute_isaac_run_metrics
+from calib_sim.reporting.isaac_report_figures import write_isaac_estimator_quality_figures, write_isaac_report_figures
+from calib_sim.reporting.isaac_report_metrics import compute_isaac_estimator_quality, compute_isaac_run_metrics
 from calib_sim.reporting.isaac_report_tables import write_isaac_report_tables
 
 
@@ -96,8 +96,10 @@ is_complete_run = _is_complete_run
 
 __all__ = [
     "compute_isaac_run_metrics",
+    "compute_isaac_estimator_quality",
     "generate_isaac_report_artifacts",
     "is_complete_run",
+    "write_isaac_estimator_quality_figures",
     "write_isaac_report_figures",
     "write_isaac_report_tables",
 ]

@@ -400,3 +400,47 @@ def write_isaac_report_figures(run_dir: str | Path, metrics: dict[str, Any]) -> 
         "uncertainty_calibration": str(calibration_path),
         "actuator_command_vs_realized": str(actuator_path),
     }
+
+
+def write_isaac_estimator_quality_figures(run_dir: str | Path, quality: dict[str, Any]) -> dict[str, str]:
+    resolved = Path(run_dir).resolve()
+    analysis_dir = resolved / "analysis"
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+    summary = dict(quality.get("summary", {}))
+
+    anchor_vs_aux_path = analysis_dir / "anchor_vs_aux_residuals.png"
+    smoother_timeline_path = analysis_dir / "smoother_correction_timeline.png"
+
+    _save_text_figure(
+        anchor_vs_aux_path,
+        title="Anchor vs Auxiliary Residual Quality",
+        lines=[
+            f"anchor mean / p95 [px]: {summary.get('anchor_mean_reprojection_rmse_px')} / {summary.get('anchor_p95_reprojection_rmse_px')}",
+            f"aux mean / p95 [px]: {summary.get('auxiliary_mean_reprojection_rmse_px')} / {summary.get('auxiliary_p95_reprojection_rmse_px')}",
+            f"native mean / p95 [px]: {summary.get('native_mean_reprojection_rmse_px')} / {summary.get('native_p95_reprojection_rmse_px')}",
+            f"fallback mean / p95 [px]: {summary.get('fallback_mean_reprojection_rmse_px')} / {summary.get('fallback_p95_reprojection_rmse_px')}",
+            f"pre-relocalization mean / p95 [px]: {summary.get('pre_relocalization_mean_reprojection_rmse_px')} / {summary.get('pre_relocalization_p95_reprojection_rmse_px')}",
+            f"post-relocalization mean / p95 [px]: {summary.get('post_relocalization_mean_reprojection_rmse_px')} / {summary.get('post_relocalization_p95_reprojection_rmse_px')}",
+            f"accepted / rejected aux updates: {summary.get('accepted_auxiliary_updates')} / {summary.get('rejected_auxiliary_updates')}",
+        ],
+    )
+    smoother_rows = list(quality.get("smoother_timeline", []))
+    _save_line_plot(
+        smoother_timeline_path,
+        title="Smoother Correction Timeline",
+        x_values=[
+            float(row["timestamp_s"])
+            for row in smoother_rows
+            if _float_or_none(row.get("timestamp_s")) is not None and row.get("feedback_correction_norm_m") is not None
+        ],
+        y_values=[
+            float(row["feedback_correction_norm_m"])
+            for row in smoother_rows
+            if _float_or_none(row.get("timestamp_s")) is not None and row.get("feedback_correction_norm_m") is not None
+        ],
+        y_label="feedback correction norm [m]",
+    )
+    return {
+        "anchor_vs_aux_residuals": str(anchor_vs_aux_path),
+        "smoother_correction_timeline": str(smoother_timeline_path),
+    }

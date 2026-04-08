@@ -31,10 +31,12 @@ class TagEstimate:
 @dataclass(slots=True)
 class FixedLagSmoother:
     lag_size: int = 30
+    use_auxiliary_tags: bool = True
     _snapshots: deque[FilterStateSnapshot] = field(default_factory=deque)
     _tag_pose_estimates: dict[int, TagEstimate] = field(default_factory=dict)
     _tag_update_counts: dict[int, int] = field(default_factory=dict)
     _cost_trace: deque[float] = field(default_factory=lambda: deque(maxlen=64))
+    _last_feedback_diagnostics: dict[str, float] = field(default_factory=dict)
 
     def push_snapshot(self, snapshot: FilterStateSnapshot) -> None:
         self._snapshots.append(snapshot)
@@ -50,6 +52,18 @@ class FixedLagSmoother:
         current_state: FilterStateSnapshot,
         anchor_pose_map: dict[int, TagPoseSpec],
     ) -> None:
+        if not self.use_auxiliary_tags:
+            for tag_id, tag_pose in anchor_pose_map.items():
+                if tag_id not in self._tag_pose_estimates:
+                    self._tag_pose_estimates[int(tag_id)] = TagEstimate(
+                        pose_wt=_pose_matrix(
+                            np.asarray(tag_pose.position_world_m, dtype=np.float64),
+                            np.asarray(tag_pose.rotation_wt, dtype=np.float64),
+                        ),
+                        size_m=float(tag_pose.size_m),
+                        is_anchor=bool(tag_pose.is_anchor),
+                    )
+            return
         rotation_wi = np.asarray(current_state.rotation_wi, dtype=np.float64)
         position_world_m = np.asarray(current_state.position_world_m, dtype=np.float64)
         for detection in detections:
@@ -105,11 +119,21 @@ class FixedLagSmoother:
         previous.observation_count += 1
         self._tag_update_counts[int(tag_id)] = count + 1
 
+    def active_tag_estimates(self, *, min_observation_count: int = 0) -> dict[int, TagEstimate]:
+        return {
+            int(tag_id): TagEstimate(
+                pose_wt=estimate.pose_wt.copy(),
+                size_m=float(estimate.size_m),
+                is_anchor=bool(estimate.is_anchor),
+                observation_count=int(estimate.observation_count),
+            )
+            for tag_id, estimate in self._tag_pose_estimates.items()
+            if estimate.observation_count >= int(min_observation_count)
+        }
+
     def active_tag_pose_specs(self, *, min_observation_count: int = 0) -> dict[int, TagPoseSpec]:
         output: dict[int, TagPoseSpec] = {}
-        for tag_id, estimate in self._tag_pose_estimates.items():
-            if estimate.observation_count < int(min_observation_count):
-                continue
+        for tag_id, estimate in self.active_tag_estimates(min_observation_count=min_observation_count).items():
             pose = estimate.pose_wt
             output[int(tag_id)] = TagPoseSpec(
                 tag_id=int(tag_id),
@@ -130,7 +154,7 @@ class FixedLagSmoother:
                 cloned_positions_world_m=(),
                 covariance=covariance,
                 cost_trace=tuple(float(value) for value in self._cost_trace),
-                diagnostics={"lag_size": float(self.lag_size)},
+                diagnostics={"lag_size": float(self.lag_size), **self._last_feedback_diagnostics},
             )
         latest = self._snapshots[-1]
         positions = tuple(snapshot.position_world_m.copy() for snapshot in self._snapshots)
@@ -146,8 +170,24 @@ class FixedLagSmoother:
                 "lag_size": float(self.lag_size),
                 "active_tag_count": float(len(self._tag_pose_estimates)),
                 "refinable_tag_count": float(sum(estimate.observation_count >= 5 for estimate in self._tag_pose_estimates.values())),
+                **self._last_feedback_diagnostics,
             },
         )
+
+    def record_feedback_diagnostics(
+        self,
+        *,
+        feedback_correction_norm_m: float,
+        max_feedback_correction_norm_m: float,
+        trusted_feedback_count: int,
+        total_feedback_candidates: int,
+    ) -> None:
+        self._last_feedback_diagnostics = {
+            "feedback_correction_norm_m": float(feedback_correction_norm_m),
+            "max_feedback_correction_norm_m": float(max_feedback_correction_norm_m),
+            "trusted_feedback_count": float(trusted_feedback_count),
+            "total_feedback_candidates": float(total_feedback_candidates),
+        }
 
 
 __all__ = ["FixedLagSmoother", "TagEstimate"]

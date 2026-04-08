@@ -56,6 +56,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--validate-config-only", action="store_true")
     parser.add_argument("--allow-incomplete-report", action="store_true")
     parser.add_argument("--allow-gt-debug-control", action="store_true")
+    parser.add_argument("--use-aux-tags-in-filter", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--use-aux-tags-in-smoother", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--use-aux-map-for-control", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--vision-covariance-scale", type=float, default=None)
+    parser.add_argument("--imu-process-covariance-scale", type=float, default=None)
+    parser.add_argument("--post-relocalization-covariance-scale", type=float, default=None)
     return parser.parse_args()
 
 
@@ -76,6 +82,25 @@ def _isaac_version() -> str:
         return importlib.metadata.version("isaacsim")
     except importlib.metadata.PackageNotFoundError:
         return "unavailable_in_current_env"
+
+
+def _apply_second_pass_overrides(config_payloads: dict[str, dict[str, object]], args: argparse.Namespace) -> None:
+    estimation = config_payloads.setdefault("estimation", {})
+    filter_config = estimation.setdefault("filter", {})
+    smoother_config = estimation.setdefault("smoother", {})
+    control_config = config_payloads.setdefault("control", {})
+    if args.use_aux_tags_in_filter is not None:
+        filter_config["use_aux_tags_in_filter"] = bool(args.use_aux_tags_in_filter)
+    if args.use_aux_tags_in_smoother is not None:
+        smoother_config["use_aux_tags_in_smoother"] = bool(args.use_aux_tags_in_smoother)
+    if args.use_aux_map_for_control is not None:
+        control_config["use_aux_map_for_control"] = bool(args.use_aux_map_for_control)
+    if args.vision_covariance_scale is not None:
+        filter_config["vision_covariance_scale"] = float(args.vision_covariance_scale)
+    if args.imu_process_covariance_scale is not None:
+        filter_config["imu_process_covariance_scale"] = float(args.imu_process_covariance_scale)
+    if args.post_relocalization_covariance_scale is not None:
+        filter_config["post_relocalization_covariance_scale"] = float(args.post_relocalization_covariance_scale)
 
 
 def main() -> int:
@@ -105,6 +130,7 @@ def main() -> int:
         allow_gt_debug_control=bool(args.allow_gt_debug_control),
     )
     runtime = create_runtime(bootstrap)
+    _apply_second_pass_overrides(runtime.config.config_payloads, args)
     writer = runtime.writer
     for name, payload in runtime.config.config_payloads.items():
         writer.write_config_snapshot(name, payload)
@@ -132,6 +158,7 @@ def main() -> int:
         "run_dir": str(run_dir.resolve()),
         "runtime": runtime.config.summary(),
         "manifest": manifest.summary(),
+        "config_snapshots": runtime.config.config_payloads,
     }
     if args.dry_run or args.validate_config_only:
         print(json.dumps(summary_payload, indent=2, sort_keys=True))

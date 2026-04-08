@@ -218,6 +218,7 @@ class IsaacStandaloneRuntime:
         self._tag_pose_map: dict[int, TagPoseSpec] = {}
         self._latest_filter_snapshot = None
         self._latest_uncertainty = None
+        self._latest_auxiliary_update_summary = None
         self._last_anchor_visible = False
         self._last_detections = ()
         self._physics_dt_s = 1.0 / float(self.config.config_payloads["scene"]["physics_rate_hz"])
@@ -231,6 +232,7 @@ class IsaacStandaloneRuntime:
         self._ik_failure_count = 0
         self._controller_consecutive_ik_failures = 0
         self._finalized_summary: IsaacRunSummary | None = None
+        self._tag_feedback_diagnostics: dict[int, dict[str, Any]] = {}
 
     @property
     def writer(self) -> IsaacRunWriter:
@@ -311,7 +313,18 @@ class IsaacStandaloneRuntime:
         actuation_config = self.config.config_payloads["actuation"]
         self._frontend = IsaacAprilTagFrontend(anchor_tag_id=int(self.config.anchor_tag_id))
         self._filter = AnchoredOnlineFilter.identity_initialized(estimator_mode=self.config.estimator_mode)
-        self._smoother = FixedLagSmoother(lag_size=int(estimation_config.get("smoother", {}).get("lag_size", 30)))
+        filter_config = estimation_config.get("filter", {})
+        smoother_config = estimation_config.get("smoother", {})
+        self._filter.use_auxiliary_tag_updates = bool(filter_config.get("use_aux_tags_in_filter", True))
+        self._filter.vision_covariance_scale = float(filter_config.get("vision_covariance_scale", 1.0))
+        self._filter.imu_process_covariance_scale = float(filter_config.get("imu_process_covariance_scale", 1.0))
+        self._filter.post_relocalization_covariance_scale = float(
+            filter_config.get("post_relocalization_covariance_scale", 1.0)
+        )
+        self._smoother = FixedLagSmoother(
+            lag_size=int(smoother_config.get("lag_size", 30)),
+            use_auxiliary_tags=bool(smoother_config.get("use_aux_tags_in_smoother", True)),
+        )
         waypoints = tuple(
             Waypoint(
                 position_world_m=tuple(float(value) for value in waypoint["position_world_m"]),
@@ -329,8 +342,8 @@ class IsaacStandaloneRuntime:
             proportional_gain=float(control_config.get("proportional_gain", 1.0)),
             max_command_abs=float(control_config.get("max_command_abs", 0.25)),
         )
-        self._filter_clock = FixedRateClock(rate_hz=float(estimation_config.get("filter", {}).get("output_rate_hz", 60.0)))
-        self._smoother_clock = FixedRateClock(rate_hz=float(estimation_config.get("smoother", {}).get("solve_rate_hz", 10.0)))
+        self._filter_clock = FixedRateClock(rate_hz=float(filter_config.get("output_rate_hz", 60.0)))
+        self._smoother_clock = FixedRateClock(rate_hz=float(smoother_config.get("solve_rate_hz", 10.0)))
         self._controller_clock = FixedRateClock(rate_hz=float(self.config.config_payloads["scene"].get("controller_rate_hz", 50.0)))
         servo_config = ServoCorruptionConfig(
             delay_s=float(actuation_config.get("delay_s", 0.0)),
@@ -555,15 +568,6 @@ class IsaacStandaloneRuntime:
                 frame_packet=frame_packet,
                 tag_size_by_id=tag_size_by_id,
             )
-            self._writer.write_estimator_input(
-                {
-                    "timestamp_s": float(frame_packet.timestamp_s),
-                    "kind": "frame_pack",
-                    "frame_index": int(frame_packet.frame_index),
-                    "anchor_visible": bool(pack.metadata.get("anchor_visible", False)),
-                    "detected_tag_ids": list(pack.metadata.get("detected_tag_ids", [])),
-                }
-            )
             for detection in pack.detections:
                 self._writer.write_detection(detection)
                 self._counts["detections"] += 1
@@ -581,12 +585,54 @@ class IsaacStandaloneRuntime:
             elif anchor_detections:
                 self._filter.rejected_updates_count += len(anchor_detections)
             auxiliary_detections = tuple(detection for detection in pack.detections if not detection.is_anchor)
-            if auxiliary_detections:
-                self._filter.update_aux_tags(
-                    tag_detections=auxiliary_detections,
-                    mapped_tag_poses=self._tag_pose_map,
-                    trust=float(self.config.config_payloads["estimation"].get("filter", {}).get("auxiliary_update_trust", 0.15)),
-                )
+            auxiliary_update_summary = self._filter.update_aux_tags(
+                tag_detections=auxiliary_detections,
+                mapped_tag_poses=self._tag_pose_map,
+                trust=float(self.config.config_payloads["estimation"].get("filter", {}).get("auxiliary_update_trust", 0.15)),
+                intrinsics_snapshot=frame_packet.intrinsics_snapshot,
+                image_width_px=int(frame_packet.image_width_px),
+                image_height_px=int(frame_packet.image_height_px),
+                min_corner_margin_px=float(
+                    self.config.config_payloads["estimation"].get("filter", {}).get("auxiliary_update_min_corner_margin_px", 0.0)
+                ),
+                min_visibility_streak=int(
+                    self.config.config_payloads["estimation"].get("filter", {}).get("auxiliary_update_min_visibility_streak", 1)
+                ),
+                max_reprojection_error_px=self.config.config_payloads["estimation"]
+                .get("filter", {})
+                .get("auxiliary_update_max_reprojection_error_px"),
+                max_innovation_norm=self.config.config_payloads["estimation"]
+                .get("filter", {})
+                .get("auxiliary_update_max_innovation_norm"),
+                max_mahalanobis_score=self.config.config_payloads["estimation"]
+                .get("filter", {})
+                .get("auxiliary_update_max_mahalanobis_score"),
+                max_feedback_correction_norm_m=self.config.config_payloads["estimation"]
+                .get("filter", {})
+                .get("auxiliary_update_max_feedback_correction_m"),
+                tag_feedback_diagnostics=self._tag_feedback_diagnostics,
+            )
+            self._latest_auxiliary_update_summary = auxiliary_update_summary
+            auxiliary_summary_payload = (
+                {} if auxiliary_update_summary is None else auxiliary_update_summary.as_json()
+            )
+            self._writer.write_estimator_input(
+                {
+                    "timestamp_s": float(frame_packet.timestamp_s),
+                    "kind": "frame_pack",
+                    "frame_index": int(frame_packet.frame_index),
+                    "anchor_visible": bool(pack.metadata.get("anchor_visible", False)),
+                    "detected_tag_ids": list(pack.metadata.get("detected_tag_ids", [])),
+                    "auxiliary_visible_count": int(auxiliary_summary_payload.get("visible_count", 0)),
+                    "native_auxiliary_pose_ready_count": int(auxiliary_summary_payload.get("native_pose_ready_count", 0)),
+                    "accepted_auxiliary_update_count": int(auxiliary_summary_payload.get("accepted_count", 0)),
+                    "rejected_auxiliary_update_count": int(auxiliary_summary_payload.get("rejected_count", 0)),
+                    "accepted_auxiliary_tag_ids": list(auxiliary_summary_payload.get("accepted_tag_ids", [])),
+                    "rejected_auxiliary_tag_ids": list(auxiliary_summary_payload.get("rejected_tag_ids", [])),
+                    "auxiliary_rejection_reasons": dict(auxiliary_summary_payload.get("rejection_reason_counts", {})),
+                    "auxiliary_update_decisions": list(auxiliary_summary_payload.get("decisions", [])),
+                }
+            )
 
     def _log_filter_and_uncertainty(self) -> None:
         if self._filter is None or self._filter_clock is None:
@@ -613,13 +659,59 @@ class IsaacStandaloneRuntime:
                 current_state=self._latest_filter_snapshot,
                 anchor_pose_map=self._tag_pose_map,
             )
+            feedback_observation_count = int(
+                self.config.config_payloads["estimation"].get("smoother", {}).get("min_feedback_observation_count", 5)
+            )
+            max_feedback_correction_norm_m = float(
+                self.config.config_payloads["estimation"].get("smoother", {}).get("max_feedback_correction_norm_m", 0.15)
+            )
+            total_feedback_candidates = 0
+            trusted_feedback_count = 0
+            max_feedback_correction_norm_seen = 0.0
+            active_estimates = self._smoother.active_tag_estimates(min_observation_count=feedback_observation_count)
+            for tag_id, estimate in active_estimates.items():
+                if int(tag_id) == int(self.config.anchor_tag_id):
+                    continue
+                total_feedback_candidates += 1
+                previous_pose = self._tag_pose_map.get(int(tag_id))
+                previous_position = (
+                    np.asarray(previous_pose.position_world_m, dtype=np.float64).reshape(3)
+                    if previous_pose is not None
+                    else np.asarray(estimate.pose_wt[:3, 3], dtype=np.float64).reshape(3)
+                )
+                candidate_position = np.asarray(estimate.pose_wt[:3, 3], dtype=np.float64).reshape(3)
+                correction_norm_m = float(np.linalg.norm(candidate_position - previous_position))
+                trusted = correction_norm_m <= max_feedback_correction_norm_m
+                max_feedback_correction_norm_seen = max(max_feedback_correction_norm_seen, correction_norm_m)
+                self._tag_feedback_diagnostics[int(tag_id)] = {
+                    "feedback_correction_norm_m": float(correction_norm_m),
+                    "trusted": bool(trusted),
+                    "observation_count": int(estimate.observation_count),
+                }
+                if not trusted:
+                    continue
+                trusted_feedback_count += 1
+                if not bool(self.config.config_payloads["control"].get("use_aux_map_for_control", True)):
+                    continue
+                self._tag_pose_map[int(tag_id)] = TagPoseSpec(
+                    tag_id=int(tag_id),
+                    size_m=float(estimate.size_m),
+                    position_world_m=tuple(float(value) for value in candidate_position.tolist()),
+                    rotation_wt=tuple(
+                        tuple(float(entry) for entry in row)
+                        for row in np.asarray(estimate.pose_wt[:3, :3], dtype=np.float64).tolist()
+                    ),
+                    is_anchor=bool(estimate.is_anchor),
+                )
+            self._smoother.record_feedback_diagnostics(
+                feedback_correction_norm_m=float(max_feedback_correction_norm_seen),
+                max_feedback_correction_norm_m=float(max_feedback_correction_norm_m),
+                trusted_feedback_count=int(trusted_feedback_count),
+                total_feedback_candidates=int(total_feedback_candidates),
+            )
             smoother_snapshot = self._smoother.solve()
             self._writer.write_smoother_state(smoother_snapshot)
             self._counts["smoother_states"] += 1
-            for tag_id, pose in self._smoother.active_tag_pose_specs(min_observation_count=5).items():
-                if int(tag_id) == int(self.config.anchor_tag_id):
-                    continue
-                self._tag_pose_map[int(tag_id)] = pose
 
     def _control_config(self) -> dict[str, Any]:
         return self.config.config_payloads["control"]

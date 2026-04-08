@@ -18,6 +18,15 @@ def _float_or_none(value: Any) -> float | None:
     return float(value)
 
 
+def _is_fallback_backend(backend: Any) -> bool:
+    lowered = str(backend or "").strip().lower()
+    return (
+        "fallback" in lowered
+        or "bright_quad_match" in lowered
+        or "rejected_candidate_match" in lowered
+    )
+
+
 def _load_config_snapshot(run_dir: Path, name: str) -> dict[str, Any]:
     path = run_dir / "config_snapshot" / f"{name}.json"
     if not path.exists():
@@ -544,12 +553,12 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
         if any(
             int(detection.get("tag_id", -1)) == int(bundle.manifest.anchor_tag_id)
             and detection.get("pose_camera_tvec_m") is not None
-            and "fallback" not in str(detection.get("detector_backend", ""))
+            and not _is_fallback_backend(detection.get("detector_backend", ""))
             for detection in frame_detections
         ):
             anchor_pnp_success_frames += 1
         if frame_detections and all(
-            detection.get("pose_camera_tvec_m") is None or "fallback" in str(detection.get("detector_backend", ""))
+            detection.get("pose_camera_tvec_m") is None or _is_fallback_backend(detection.get("detector_backend", ""))
             for detection in frame_detections
         ):
             fallback_only_frames += 1
@@ -688,3 +697,316 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
     analysis_dir.mkdir(parents=True, exist_ok=True)
     (analysis_dir / "metrics.json").write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return metrics
+
+
+def _nearest_filter_sample(
+    filter_rows: list[dict[str, Any]],
+    *,
+    timestamp_s: float,
+) -> dict[str, Any] | None:
+    usable_rows = [
+        row
+        for row in filter_rows
+        if _float_or_none(row.get("timestamp_s")) is not None
+    ]
+    if not usable_rows:
+        return None
+    times = np.asarray([float(row["timestamp_s"]) for row in usable_rows], dtype=np.float64)
+    index = int(np.argmin(np.abs(times - float(timestamp_s))))
+    return usable_rows[index]
+
+
+def _detection_reprojection_rows(
+    bundle: Any,
+) -> list[dict[str, Any]]:
+    if not bundle.gt or not bundle.gt.get("tag_gt"):
+        return []
+    gt_payload = bundle.gt.get("tag_gt", {})
+    gt_tag_poses: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    for tag in gt_payload.get("tags", []):
+        if not isinstance(tag, dict) or "tag_id" not in tag:
+            continue
+        position = _position_from_tag_gt(tag)
+        rotation = _rotation_from_tag_gt(tag)
+        if position is None or rotation is None:
+            continue
+        gt_tag_poses[int(tag["tag_id"])] = (position, rotation)
+    frame_by_index = {
+        int(row["frame_index"]): row
+        for row in bundle.raw.get("camera_frames", [])
+        if "frame_index" in row and "intrinsics_snapshot" in row
+    }
+    frame_pack_by_index = {
+        int(row["frame_index"]): row
+        for row in bundle.raw.get("estimator_input", [])
+        if str(row.get("kind", "")) == "frame_pack" and "frame_index" in row
+    }
+    filter_rows = bundle.estimates.get("filter_state", [])
+    rows: list[dict[str, Any]] = []
+    for detection in bundle.raw.get("detections", []):
+        frame = frame_by_index.get(int(detection.get("frame_index", -1)))
+        if frame is None:
+            continue
+        gt_pose = gt_tag_poses.get(int(detection.get("tag_id", -1)))
+        if gt_pose is None:
+            continue
+        filter_row = _nearest_filter_sample(filter_rows, timestamp_s=float(detection.get("timestamp_s", 0.0) or 0.0))
+        if filter_row is None:
+            continue
+        position_world_m = _vector_or_none(filter_row.get("position_world_m"))
+        rotation_wi = _matrix3_or_none(filter_row.get("rotation_wi"))
+        local_tag_points_m = np.asarray(detection.get("local_tag_points_m", []), dtype=np.float64)
+        corners_xy = np.asarray(detection.get("corners_xy", []), dtype=np.float64)
+        intrinsics = frame.get("intrinsics_snapshot", {})
+        if (
+            position_world_m is None
+            or rotation_wi is None
+            or local_tag_points_m.shape != (4, 3)
+            or corners_xy.shape != (4, 2)
+        ):
+            continue
+        fx = _float_or_none(intrinsics.get("fx_px"))
+        fy = _float_or_none(intrinsics.get("fy_px"))
+        cx = _float_or_none(intrinsics.get("cx_px"))
+        cy = _float_or_none(intrinsics.get("cy_px"))
+        if fx is None or fy is None or cx is None or cy is None:
+            continue
+        camera_matrix = np.array([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]], dtype=np.float64)
+        distortion = intrinsics.get("distortion_coefficients", [0.0, 0.0, 0.0, 0.0, 0.0])
+        dist_coeffs = np.asarray(distortion, dtype=np.float64).reshape(-1, 1)
+        tag_position_world_m, rotation_wt = gt_pose
+        world_points = (rotation_wt @ local_tag_points_m.T).T + tag_position_world_m.reshape(1, 3)
+        rotation_wc = rotation_wi
+        rotation_cw = rotation_wc.T
+        translation_cw = -rotation_cw @ position_world_m.reshape(3)
+        rvec_cw, _ = cv2.Rodrigues(rotation_cw)
+        projected_points, _ = cv2.projectPoints(
+            world_points,
+            rvec_cw,
+            translation_cw.reshape(3, 1),
+            camera_matrix,
+            dist_coeffs,
+        )
+        projected_corners = np.asarray(projected_points, dtype=np.float64).reshape(-1, 2)
+        rmse_px = float(np.sqrt(np.mean(np.sum((projected_corners - corners_xy) ** 2, axis=1))))
+        frame_pack = frame_pack_by_index.get(int(detection.get("frame_index", -1)), {})
+        innovation_diagnostics = filter_row.get("innovation_diagnostics", {})
+        anchor_relocalizations = int(float(innovation_diagnostics.get("anchor_relocalizations", 0.0) or 0.0))
+        detector_backend = str(detection.get("detector_backend", ""))
+        rows.append(
+            {
+                "timestamp_s": float(detection.get("timestamp_s", 0.0)),
+                "frame_index": int(detection.get("frame_index", -1)),
+                "tag_id": int(detection.get("tag_id", -1)),
+                "is_anchor": bool(detection.get("is_anchor", False)),
+                "detector_backend": detector_backend,
+                "native_backend": not _is_fallback_backend(detector_backend),
+                "reprojection_rmse_px": rmse_px,
+                "anchor_visible": bool(frame_pack.get("anchor_visible", False)),
+                "anchor_relocalizations": anchor_relocalizations,
+                "before_anchor_relocalization": bool(anchor_relocalizations <= 0),
+                "after_anchor_relocalization": bool(anchor_relocalizations > 0),
+            }
+        )
+    return rows
+
+
+def _mean_and_p95(values: list[float]) -> tuple[float | None, float | None]:
+    if not values:
+        return None, None
+    array = np.asarray(values, dtype=np.float64)
+    return float(np.mean(array)), float(np.percentile(array, 95.0))
+
+
+def compute_isaac_estimator_quality(run_dir: str | Path) -> dict[str, Any]:
+    resolved = Path(run_dir).resolve()
+    input_bundle = load_replay_bundle(resolved, include_gt=True)
+    metrics = compute_isaac_run_metrics(resolved)
+    detection_rows = _detection_reprojection_rows(input_bundle)
+    frame_pack_rows = [
+        row
+        for row in input_bundle.raw.get("estimator_input", [])
+        if str(row.get("kind", "")) == "frame_pack"
+    ]
+    smoother_rows = input_bundle.estimates.get("smoother_state", [])
+
+    anchor_residuals = [float(row["reprojection_rmse_px"]) for row in detection_rows if bool(row["is_anchor"])]
+    auxiliary_residuals = [float(row["reprojection_rmse_px"]) for row in detection_rows if not bool(row["is_anchor"])]
+    native_residuals = [float(row["reprojection_rmse_px"]) for row in detection_rows if bool(row["native_backend"])]
+    fallback_residuals = [float(row["reprojection_rmse_px"]) for row in detection_rows if not bool(row["native_backend"])]
+    pre_relocalization = [
+        float(row["reprojection_rmse_px"]) for row in detection_rows if bool(row["before_anchor_relocalization"])
+    ]
+    post_relocalization = [
+        float(row["reprojection_rmse_px"]) for row in detection_rows if bool(row["after_anchor_relocalization"])
+    ]
+
+    residuals_by_tag: dict[int, list[float]] = {}
+    for row in detection_rows:
+        residuals_by_tag.setdefault(int(row["tag_id"]), []).append(float(row["reprojection_rmse_px"]))
+
+    tag_update_breakdown: dict[int, dict[str, Any]] = {}
+    total_accepted_aux_updates = 0
+    total_rejected_aux_updates = 0
+    total_auxiliary_contributor_count = 0
+    anchor_visible_flags: list[bool] = []
+    for row in frame_pack_rows:
+        anchor_visible_flags.append(bool(row.get("anchor_visible", False)))
+        total_auxiliary_contributor_count += int(row.get("accepted_auxiliary_update_count", 0) or 0)
+        for decision in row.get("auxiliary_update_decisions", []) or []:
+            if not isinstance(decision, dict):
+                continue
+            tag_id = int(decision.get("tag_id", -1))
+            entry = tag_update_breakdown.setdefault(
+                tag_id,
+                {
+                    "tag_id": tag_id,
+                    "accepted_count": 0,
+                    "rejected_count": 0,
+                    "fallback_only": 0,
+                    "corner_margin_fail": 0,
+                    "reproj_fail": 0,
+                    "innovation_fail": 0,
+                    "visibility_streak_fail": 0,
+                    "covariance_fail": 0,
+                },
+            )
+            accepted = bool(decision.get("accepted", False))
+            reason = str(decision.get("reason", ""))
+            if accepted:
+                entry["accepted_count"] += 1
+                total_accepted_aux_updates += 1
+            else:
+                entry["rejected_count"] += 1
+                total_rejected_aux_updates += 1
+                if reason in entry:
+                    entry[reason] += 1
+    if not tag_update_breakdown:
+        for row in detection_rows:
+            if bool(row.get("is_anchor", False)):
+                continue
+            tag_id = int(row["tag_id"])
+            entry = tag_update_breakdown.setdefault(
+                tag_id,
+                {
+                    "tag_id": tag_id,
+                    "accepted_count": 0,
+                    "rejected_count": 0,
+                    "fallback_only": 0,
+                    "corner_margin_fail": 0,
+                    "covariance_fail": 0,
+                    "innovation_fail": 0,
+                    "reproj_fail": 0,
+                    "visibility_streak_fail": 0,
+                },
+            )
+            if bool(row.get("native_backend", False)):
+                entry["accepted_count"] += 1
+            else:
+                entry["rejected_count"] += 1
+                entry["fallback_only"] += 1
+        if input_bundle.estimates.get("filter_state"):
+            total_accepted_aux_updates = int(
+                max(
+                    float(row.get("innovation_diagnostics", {}).get("auxiliary_update_count", 0.0))
+                    for row in input_bundle.estimates.get("filter_state", [])
+                )
+            )
+            total_rejected_aux_updates = int(
+                max(
+                    float(row.get("innovation_diagnostics", {}).get("auxiliary_rejection_count", 0.0))
+                    for row in input_bundle.estimates.get("filter_state", [])
+                )
+            )
+    if frame_pack_rows and total_auxiliary_contributor_count == 0:
+        auxiliary_detections_by_frame = {}
+        for row in detection_rows:
+            if bool(row.get("is_anchor", False)):
+                continue
+            frame_index = int(row["frame_index"])
+            auxiliary_detections_by_frame[frame_index] = auxiliary_detections_by_frame.get(frame_index, 0) + 1
+        total_auxiliary_contributor_count = int(sum(auxiliary_detections_by_frame.values()))
+    if not frame_pack_rows:
+        auxiliary_detections_by_frame: dict[int, int] = {}
+        anchor_visible_by_frame: dict[int, bool] = {}
+        for row in detection_rows:
+            frame_index = int(row["frame_index"])
+            if bool(row.get("is_anchor", False)):
+                anchor_visible_by_frame[frame_index] = True
+            else:
+                auxiliary_detections_by_frame[frame_index] = auxiliary_detections_by_frame.get(frame_index, 0) + 1
+        if auxiliary_detections_by_frame:
+            total_auxiliary_contributor_count = int(sum(auxiliary_detections_by_frame.values()))
+            anchor_visible_flags = [
+                bool(anchor_visible_by_frame.get(frame_index, False))
+                for frame_index in sorted(auxiliary_detections_by_frame)
+            ]
+            frame_pack_rows = [{"frame_index": frame_index} for frame_index in sorted(auxiliary_detections_by_frame)]
+
+    smoother_timeline = []
+    for row in smoother_rows:
+        diagnostics = row.get("diagnostics", {})
+        smoother_timeline.append(
+            {
+                "timestamp_s": float(row.get("timestamp_s", 0.0) or 0.0),
+                "feedback_correction_norm_m": _float_or_none(diagnostics.get("feedback_correction_norm_m")),
+                "trusted_feedback_count": _float_or_none(diagnostics.get("trusted_feedback_count")),
+                "total_feedback_candidates": _float_or_none(diagnostics.get("total_feedback_candidates")),
+            }
+        )
+
+    anchor_mean, anchor_p95 = _mean_and_p95(anchor_residuals)
+    aux_mean, aux_p95 = _mean_and_p95(auxiliary_residuals)
+    native_mean, native_p95 = _mean_and_p95(native_residuals)
+    fallback_mean, fallback_p95 = _mean_and_p95(fallback_residuals)
+    pre_mean, pre_p95 = _mean_and_p95(pre_relocalization)
+    post_mean, post_p95 = _mean_and_p95(post_relocalization)
+    smoother_norms = [
+        float(row["feedback_correction_norm_m"])
+        for row in smoother_timeline
+        if row.get("feedback_correction_norm_m") is not None
+    ]
+    smoother_mean, smoother_p95 = _mean_and_p95(smoother_norms)
+    tag_rows = [
+        {
+            "tag_id": int(tag_id),
+            "mean_reprojection_rmse_px": float(np.mean(values)),
+            "p95_reprojection_rmse_px": float(np.percentile(np.asarray(values, dtype=np.float64), 95.0)),
+            "sample_count": int(len(values)),
+        }
+        for tag_id, values in sorted(residuals_by_tag.items())
+    ]
+    quality = {
+        "run_id": metrics["run_id"],
+        "summary": {
+            "anchor_mean_reprojection_rmse_px": anchor_mean,
+            "anchor_p95_reprojection_rmse_px": anchor_p95,
+            "auxiliary_mean_reprojection_rmse_px": aux_mean,
+            "auxiliary_p95_reprojection_rmse_px": aux_p95,
+            "native_mean_reprojection_rmse_px": native_mean,
+            "native_p95_reprojection_rmse_px": native_p95,
+            "fallback_mean_reprojection_rmse_px": fallback_mean,
+            "fallback_p95_reprojection_rmse_px": fallback_p95,
+            "pre_relocalization_mean_reprojection_rmse_px": pre_mean,
+            "pre_relocalization_p95_reprojection_rmse_px": pre_p95,
+            "post_relocalization_mean_reprojection_rmse_px": post_mean,
+            "post_relocalization_p95_reprojection_rmse_px": post_p95,
+            "mean_smoother_correction_norm_m": smoother_mean,
+            "p95_smoother_correction_norm_m": smoother_p95,
+            "accepted_auxiliary_updates": int(total_accepted_aux_updates),
+            "rejected_auxiliary_updates": int(total_rejected_aux_updates),
+            "anchor_visible_fraction": None
+            if not anchor_visible_flags
+            else float(sum(anchor_visible_flags) / len(anchor_visible_flags)),
+            "mean_auxiliary_contributor_count": None
+            if not frame_pack_rows
+            else float(total_auxiliary_contributor_count / len(frame_pack_rows)),
+        },
+        "uncertainty": dict(metrics.get("uncertainty_calibration", {})),
+        "map_quality": dict(metrics.get("map_quality", {})),
+        "tag_residuals": tag_rows,
+        "tag_update_breakdown": [value for _tag_id, value in sorted(tag_update_breakdown.items())],
+        "smoother_timeline": smoother_timeline,
+        "detection_residuals": detection_rows,
+    }
+    return quality

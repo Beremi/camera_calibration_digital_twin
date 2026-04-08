@@ -1,0 +1,80 @@
+{
+  "anchor_tag_id": 0,
+  "controller_config": {
+    "command_space": "anchored_position_delta",
+    "gates": {
+      "max_anchor_lost_steps": 5,
+      "max_innovation_norm": 0.25,
+      "max_position_radius_95_m": 0.1
+    },
+    "max_command_abs": 0.25,
+    "name": "anchored_path_tracking",
+    "path_frame": "W",
+    "proportional_gain": 1.0,
+    "waypoints": [
+      {
+        "position_world_m": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tolerance_m": 0.02
+      },
+      {
+        "position_world_m": [
+          0.1,
+          0.0,
+          0.0
+        ],
+        "tolerance_m": 0.02
+      },
+      {
+        "position_world_m": [
+          0.1,
+          0.1,
+          0.0
+        ],
+        "tolerance_m": 0.02
+      }
+    ]
+  },
+  "created_at_utc": "2026-04-08T06:25:41.186672+00:00",
+  "estimator_config": {
+    "anchor_tag_fixed": true,
+    "auxiliary_tags_are_rigid_poses": true,
+    "filter": {
+      "anchor_measurement_std_m": 0.01,
+      "auxiliary_update_trust": 0.15,
+      "kind": "error_state_ekf",
+      "output_rate_hz": 60.0,
+      "state_order": [
+        "R_WI",
+        "p_WI",
+        "v_WI",
+        "b_g",
+        "b_a"
+      ]
+    },
+    "name": "anchored_vio",
+    "no_ground_truth_inference": true,
+    "smoother": {
+      "actuator_nuisance_mode": "reduced",
+      "lag_size": 30,
+      "refine_auxiliary_tags": true,
+      "refine_biases": true,
+      "solve_rate_hz": 10.0
+    },
+    "world_frame_policy": "W_equals_A"
+  },
+  "git_commit_sha": "32759cd842fd9ca8b6e5e5d8ee8604bd96e65f61",
+  "isaac_sim_version": "available",
+  "noise_presets": {
+    "actuation": "servo_nominal",
+    "imu": "imu_nominal_phone"
+  },
+  "random_seed": 7,
+  "robot_preset": "ur5e_phone_head",
+  "ros2_bridge_used": false,
+  "run_id": "run_20260408_062541",
+  "stage_usd_path": "assets/isaac/anchor_room.usd"
+}

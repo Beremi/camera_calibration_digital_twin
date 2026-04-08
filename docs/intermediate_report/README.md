@@ -2,6 +2,12 @@
 
 This folder is a self-contained LaTeX bundle for the current Checkpoint 01 state.
 
+Status note:
+
+- this remains the historical browser-simulator / Checkpoint 01 report
+- the Isaac-oriented paper draft now lives under `report_tex/`
+- do not duplicate Isaac results or Isaac-only tables here; link readers to the `report_tex/` track instead
+
 Main files:
 
 - `main.tex` — report source

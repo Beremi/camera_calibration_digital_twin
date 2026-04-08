@@ -1,0 +1,27 @@
+{
+  "anchor_tag_fixed": true,
+  "auxiliary_tags_are_rigid_poses": true,
+  "filter": {
+    "anchor_measurement_std_m": 0.01,
+    "auxiliary_update_trust": 0.15,
+    "kind": "error_state_ekf",
+    "output_rate_hz": 60.0,
+    "state_order": [
+      "R_WI",
+      "p_WI",
+      "v_WI",
+      "b_g",
+      "b_a"
+    ]
+  },
+  "name": "anchored_vio",
+  "no_ground_truth_inference": true,
+  "smoother": {
+    "actuator_nuisance_mode": "reduced",
+    "lag_size": 30,
+    "refine_auxiliary_tags": true,
+    "refine_biases": true,
+    "solve_rate_hz": 10.0
+  },
+  "world_frame_policy": "W_equals_A"
+}

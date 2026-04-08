@@ -1,0 +1,13 @@
+{
+  "backlash": 0.0015,
+  "bias": 0.004,
+  "deadband": 0.0025,
+  "delay_s": 0.015,
+  "drop_probability": 0.01,
+  "gain_error": 0.985,
+  "jitter_std_s": 0.002,
+  "lag_time_constant_s": 0.06,
+  "name": "servo_nominal",
+  "process_noise_std": 0.0005,
+  "rate_limit_per_s": 4.0
+}

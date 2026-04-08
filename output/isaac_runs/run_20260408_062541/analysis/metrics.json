@@ -1,0 +1,158 @@
+{
+  "config": {
+    "actuation_preset": "servo_nominal",
+    "camera_rate_hz": 30.0,
+    "controller_rate_hz": 50.0,
+    "filter_rate_hz": 60.0,
+    "imu_rate_hz": 200.0,
+    "noise_preset": "imu_nominal_phone",
+    "observed_auxiliary_tag_ids": [],
+    "physics_rate_hz": 240.0,
+    "smoother_rate_hz": 10.0
+  },
+  "control": {
+    "completion_fraction": null,
+    "failure_rate_percent": null,
+    "max_command_abs": 0.0,
+    "mean_actuator_tracking_error": null,
+    "mean_completion_time_s": null,
+    "mean_waypoint_error_m": null,
+    "p95_waypoint_error_m": null,
+    "saturation_fraction": 0.0
+  },
+  "counts": {
+    "camera_frames": 0,
+    "commands": 0,
+    "detections": 0,
+    "filter_states": 0,
+    "imu_packets": 0,
+    "realized_joints": 0,
+    "smoother_states": 0,
+    "uncertainty_states": 0,
+    "unique_detected_auxiliary_tags": 0,
+    "unique_detected_tags": 0
+  },
+  "estimation": {
+    "detected_tag_ids": [],
+    "max_position_radius_95_m": null,
+    "mean_innovation_norm": null,
+    "mean_position_radius_95_m": null
+  },
+  "ground_truth_available": {
+    "camera_gt": false,
+    "imu_gt": false,
+    "joint_gt": false,
+    "tag_gt": false
+  },
+  "manifest": {
+    "anchor_tag_id": 0,
+    "controller_config": {
+      "command_space": "anchored_position_delta",
+      "gates": {
+        "max_anchor_lost_steps": 5,
+        "max_innovation_norm": 0.25,
+        "max_position_radius_95_m": 0.1
+      },
+      "max_command_abs": 0.25,
+      "name": "anchored_path_tracking",
+      "path_frame": "W",
+      "proportional_gain": 1.0,
+      "waypoints": [
+        {
+          "position_world_m": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "tolerance_m": 0.02
+        },
+        {
+          "position_world_m": [
+            0.1,
+            0.0,
+            0.0
+          ],
+          "tolerance_m": 0.02
+        },
+        {
+          "position_world_m": [
+            0.1,
+            0.1,
+            0.0
+          ],
+          "tolerance_m": 0.02
+        }
+      ]
+    },
+    "created_at_utc": "2026-04-08T06:25:41.186672+00:00",
+    "estimator_config": {
+      "anchor_tag_fixed": true,
+      "auxiliary_tags_are_rigid_poses": true,
+      "filter": {
+        "anchor_measurement_std_m": 0.01,
+        "auxiliary_update_trust": 0.15,
+        "kind": "error_state_ekf",
+        "output_rate_hz": 60.0,
+        "state_order": [
+          "R_WI",
+          "p_WI",
+          "v_WI",
+          "b_g",
+          "b_a"
+        ]
+      },
+      "name": "anchored_vio",
+      "no_ground_truth_inference": true,
+      "smoother": {
+        "actuator_nuisance_mode": "reduced",
+        "lag_size": 30,
+        "refine_auxiliary_tags": true,
+        "refine_biases": true,
+        "solve_rate_hz": 10.0
+      },
+      "world_frame_policy": "W_equals_A"
+    },
+    "git_commit_sha": "32759cd842fd9ca8b6e5e5d8ee8604bd96e65f61",
+    "isaac_sim_version": "available",
+    "noise_presets": {
+      "actuation": "servo_nominal",
+      "imu": "imu_nominal_phone"
+    },
+    "random_seed": 7,
+    "robot_preset": "ur5e_phone_head",
+    "ros2_bridge_used": false,
+    "run_id": "run_20260408_062541",
+    "stage_usd_path": "assets/isaac/anchor_room.usd"
+  },
+  "parameters": {
+    "mean_accel_bias_norm_mps2": null,
+    "mean_gyro_bias_norm_rps": null
+  },
+  "residuals": {
+    "mean_imu_residual_sq": null,
+    "mean_visual_residual_sq": null
+  },
+  "run_dir": "/home/beremi/repos/camera_calibration_digital_twin/output/isaac_runs/run_20260408_062541",
+  "run_id": "run_20260408_062541",
+  "schema_version": 2,
+  "timing": {
+    "duration_s": 0.0,
+    "first_timestamp_s": null,
+    "last_timestamp_s": null
+  },
+  "trajectory": {
+    "map_error_m": null,
+    "max_position_error_m": null,
+    "mean_position_error_m": null,
+    "mean_reprojection_error_px": null,
+    "mean_rotation_error_deg": null,
+    "p95_position_error_m": null
+  },
+  "uncertainty_calibration": {
+    "empirical_95_coverage_percent": null,
+    "mean_position_radius_95_m": null,
+    "pose_nees": null,
+    "sigma_error_correlation": null,
+    "velocity_nees": null
+  }
+}

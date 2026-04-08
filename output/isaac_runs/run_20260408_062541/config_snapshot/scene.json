@@ -1,0 +1,37 @@
+{
+  "anchor_tag_id": 0,
+  "camera_prim_path": "/World/Robot/phone_camera",
+  "camera_rate_hz": 30.0,
+  "controller_rate_hz": 50.0,
+  "filter_rate_hz": 60.0,
+  "imu_prim_path": "/World/Robot/phone_imu",
+  "imu_rate_hz": 200.0,
+  "name": "anchor_room",
+  "observer_camera_prim_paths": [
+    "/World/Observer/overview_camera"
+  ],
+  "physics_rate_hz": 240.0,
+  "robot_prim_path": "/World/Robot",
+  "smoother_rate_hz": 10.0,
+  "stage_path": "assets/isaac/anchor_room.usd",
+  "tags": [
+    {
+      "is_anchor": true,
+      "prim_path": "/World/Tags/anchor_tag_0",
+      "size_m": 0.1,
+      "tag_id": 0
+    },
+    {
+      "is_anchor": false,
+      "prim_path": "/World/Tags/aux_tag_42",
+      "size_m": 0.1,
+      "tag_id": 42
+    },
+    {
+      "is_anchor": false,
+      "prim_path": "/World/Tags/aux_tag_88",
+      "size_m": 0.1,
+      "tag_id": 88
+    }
+  ]
+}

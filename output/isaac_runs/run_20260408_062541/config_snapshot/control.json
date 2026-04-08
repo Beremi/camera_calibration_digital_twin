@@ -1,0 +1,38 @@
+{
+  "command_space": "anchored_position_delta",
+  "gates": {
+    "max_anchor_lost_steps": 5,
+    "max_innovation_norm": 0.25,
+    "max_position_radius_95_m": 0.1
+  },
+  "max_command_abs": 0.25,
+  "name": "anchored_path_tracking",
+  "path_frame": "W",
+  "proportional_gain": 1.0,
+  "waypoints": [
+    {
+      "position_world_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "tolerance_m": 0.02
+    },
+    {
+      "position_world_m": [
+        0.1,
+        0.0,
+        0.0
+      ],
+      "tolerance_m": 0.02
+    },
+    {
+      "position_world_m": [
+        0.1,
+        0.1,
+        0.0
+      ],
+      "tolerance_m": 0.02
+    }
+  ]
+}

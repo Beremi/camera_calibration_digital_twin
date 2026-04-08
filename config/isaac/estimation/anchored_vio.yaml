@@ -1,0 +1,17 @@
+name: anchored_vio
+world_frame_policy: W_equals_A
+anchor_tag_fixed: true
+auxiliary_tags_are_rigid_poses: true
+filter:
+  kind: error_state_ekf
+  state_order: [R_WI, p_WI, v_WI, b_g, b_a]
+  output_rate_hz: 60.0
+  anchor_measurement_std_m: 0.01
+  auxiliary_update_trust: 0.15
+smoother:
+  lag_size: 30
+  solve_rate_hz: 10.0
+  refine_biases: true
+  refine_auxiliary_tags: true
+  actuator_nuisance_mode: reduced
+no_ground_truth_inference: true

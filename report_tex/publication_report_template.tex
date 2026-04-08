@@ -1,0 +1,538 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,amsfonts,bm,mathtools}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{siunitx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{placeins}
+\usepackage{url}
+\hypersetup{colorlinks=true,citecolor=blue,linkcolor=blue,urlcolor=blue}
+\sisetup{detect-all=true}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\SO}{\mathrm{SO}(3)}
+\newcommand{\SE}{\mathrm{SE}(3)}
+\newcommand{\ArtifactPending}{\textit{pending Isaac artifact}}
+\newcommand{\IsaacLatestReportDataDir}{../output/isaac_runs/latest/analysis/report_data}
+\newcommand{\IsaacRunDescriptionRows}{%
+Run id & \ArtifactPending{} \\
+Isaac Sim version & \ArtifactPending{} \\
+Physics rate [Hz] & \ArtifactPending{} \\
+IMU rate [Hz] & \ArtifactPending{} \\
+Camera rate [Hz] & \ArtifactPending{} \\
+Frames & \ArtifactPending{} \\
+IMU packets & \ArtifactPending{} \\
+Observed auxiliary tags & \ArtifactPending{} \\
+Anchor tag id & \ArtifactPending{} \\
+Noise preset & \ArtifactPending{} \\
+Seed & \ArtifactPending{} \\
+}
+\newcommand{\IsaacTrajectoryMapRows}{%
+Visual-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+IMU-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & n/a & n/a \\
+Known-map diagnostic & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & n/a \\
+}
+\newcommand{\IsaacPathTrackingRows}{%
+Open-loop commands & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+Closed-loop visual-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+Closed-loop fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\IsaacParameterPlausibilityRows}{%
+Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\IsaacUncertaintyCalibrationRows}{%
+Visual-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & n/a & \ArtifactPending{} \\
+Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\IsaacNoiseSensitivityRows}{%
+Ideal & Visual-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+Ideal & Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+Nominal & Visual-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+Nominal & Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+Stress & Visual-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+Stress & Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\trans}{^{\mathsf T}}
+\newcommand{\inv}{^{-1}}
+\newcommand{\Exp}{\mathrm{Exp}}
+\newcommand{\Log}{\mathrm{Log}}
+\newcommand{\diag}{\mathrm{diag}}
+\newcommand{\trace}{\mathrm{tr}}
+\IfFileExists{\IsaacLatestReportDataDir/paper_artifacts.tex}{\input{\IsaacLatestReportDataDir/paper_artifacts.tex}}{}
+
+\title{Publication-Ready Scientific Report Template for \\ Anchored Visual-Inertial Path Tracking with Uncertain Servo Actuation in Isaac Sim}
+\author{Prepared as an implementation and reporting scaffold for the current repository}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+\begin{center}
+\fbox{\parbox{0.94\linewidth}{
+\textbf{How to use this document.} This is a publication-grade template and writing scaffold. The method, notation, problem statement, evaluation protocol, and references are already written. Measured result rows and figures must be generated from Isaac run artifacts under \texttt{output/isaac\_runs/<run\_id>/analysis/report\_data/}. When \texttt{output/isaac\_runs/latest/analysis/report\_data/} exists, the tables and figures below automatically consume those generated files; otherwise the paper falls back to explicit pending markers.
+}}
+\end{center}
+
+\begin{abstract}
+We consider a robot arm carrying a phone-like sensing head consisting of a monocular camera and an inertial measurement unit (IMU). The task is to track a prescribed path in a coordinate frame fixed by one known anchor tag while treating the remaining visible tags as static but initially unknown landmarks, and while accounting for realistic actuator uncertainty rather than ideal joint execution. We propose a two-timescale architecture in which a low-latency visual-inertial filter estimates the dynamic motion state online, a fixed-lag smoother refines auxiliary-tag poses and nuisance parameters, and a path-tracking controller closes the loop on the estimated anchored-frame pose. The implementation target is Isaac Sim with physics-based IMU simulation, camera rendering, and explicit logging of raw measurements, ground truth, commands, realized actuator states, estimates, and uncertainty. This report defines the exact estimation problem, the measurement and process models, the actuator uncertainty model, the implementation contract, the evaluation protocol, and the publication-ready result tables and figures that must be produced by the checkpoint. Experimental placeholders are provided for trajectory accuracy, map accuracy, path-tracking performance, uncertainty calibration, and robustness under sensing and actuation stress.\end{abstract}
+
+\section{Draft Status}
+This repository now contains an Isaac-oriented runtime, a dedicated Isaac-capable virtual environment path, and artifact-driven report generators. The scientific sections of this paper are reviewable now, and any available run under \texttt{output/isaac\_runs/latest/} can populate the manifest, metric, and figure slots below automatically. Headline comparison rows still require executed Isaac benchmark runs and seed sweeps, so any entry rendered as \ArtifactPending{} should be read as a reporting gap rather than as a measured outcome. Existing browser-simulator artifacts may inform background wording or a historical appendix, but they are not substitutes for the Isaac-only trajectory, control, actuator, or manifest tables in this paper.
+
+\section{Introduction}
+Real-time state estimation and control for camera-equipped robot arms sit at the intersection of visual-inertial estimation, fiducial-aided localization, and closed-loop robot control. Visual-inertial methods achieve robust motion estimation by combining high-rate inertial propagation with visual corrections from geometric image measurements \citep{mourikis2007msckf, forster2017preintegration, leutenegger2015okvis, qin2018vinsmono}. Fiducials such as AprilTags provide metric, repeatable geometric constraints that are especially attractive for calibration, benchmarking, and controlled robotic experiments \citep{olson2011apriltag, wang2016apriltag2}. For online operation, the key challenge is not merely estimating pose, but doing so under realistic sensing and actuation imperfections while retaining calibrated uncertainty and reproducibility.
+
+The current repository already contains a research-grade browser simulator and batch-estimation pipeline. The next step is to port the architecture to Isaac Sim and make the runtime scientifically useful rather than purely demonstrative. Isaac Sim provides physics-based sensors, ROS 2 bridging, camera data publication utilities, synthetic data generation workflows, and explicit simulation-time control, making it an appropriate platform for a digital-twin implementation of anchored visual-inertial control experiments \citep{nvidia_isaac_imu, nvidia_isaac_ros2_bridge, nvidia_isaac_ros2_camera, nvidia_isaac_replicator, nvidia_isaac_sim_manager}.
+
+This report is built around three design decisions.
+\begin{enumerate}[leftmargin=1.5em]
+    \item One known anchor tag fixes the world frame and metric scale.
+    \item Auxiliary tags are estimated as rigid static poses rather than free corner landmarks.
+    \item Real-time estimation is split into a fast filter and a slower fixed-lag smoother rather than forcing all variables into one monolithic EKF.
+\end{enumerate}
+
+The contributions to be validated by the completed checkpoint are:
+\begin{enumerate}[leftmargin=1.5em]
+    \item an Isaac Sim implementation of anchored visual-inertial path tracking with uncertain servo actuation,
+    \item a precise probabilistic formulation with explicit state, measurements, noises, and priors,
+    \item a no-ground-truth-leak evaluation discipline,
+    \item a complete experimental protocol with uncertainty calibration and robustness ablations.
+\end{enumerate}
+
+\section{Related Work}
+Visual-inertial odometry has been approached through both recursive filtering and nonlinear optimization. The Multi-State Constraint Kalman Filter (MSCKF) showed how camera updates can constrain inertial state estimates in a computationally efficient filter without explicitly maintaining all landmarks in the filter state \citep{mourikis2007msckf}. Optimization-based systems such as OKVIS and VINS-Mono demonstrated the practical strength of tightly coupled nonlinear visual-inertial estimation with IMU preintegration and keyframe or sliding-window optimization \citep{leutenegger2015okvis, qin2018vinsmono}. The on-manifold IMU preintegration formulation of \citet{forster2017preintegration} is now the standard way to connect high-rate IMU samples to lower-rate keyframe states in factor-graph formulations.
+
+For incremental smoothing, iSAM2 provides an efficient and principled framework for updating sparse nonlinear estimates online \citep{kaess2012isam2}. On the filtering side, invariant and error-state formulations improve consistency by respecting the underlying Lie-group geometry of motion estimation problems \citep{barrau2017inekf, brossard2018invariantvislam}. For the present application, these results motivate a fast geometric filter for the dynamic motion state and a smoother for static map variables and slowly varying nuisance parameters.
+
+Visual servoing provides the control-side language for closing the loop on estimated pose. Position-based visual servoing is especially natural when the task path is specified directly in a metric anchored frame and the controller can command motion toward desired poses rather than only image features \citep{chaumette2006part1, chaumette2007part2}.
+
+Fiducials remain attractive in robot-camera calibration and controlled manipulation experiments because they yield repeatable, metric corner observations from single images \citep{olson2011apriltag, wang2016apriltag2}. In the present setting, the anchor tag is not simply another measurement source: it fixes the global rigid gauge of the estimation problem. Auxiliary tags then provide additional geometric coverage while remaining latent static variables.
+
+\section{Problem Statement}
+We consider a robot arm carrying a phone-like sensor head composed of a monocular camera and an IMU. The robot must follow a prescribed sequence of waypoints or poses expressed in a metric frame attached to one known anchor tag located on the cube closest to the arm. Other AprilTags may be visible in the scene, but their world poses are not assumed known during inference. The actuator interface is uncertain: commands are not interpreted as exact realized joint motions.
+
+The estimation and control objectives are to:
+\begin{enumerate}[leftmargin=1.5em]
+    \item estimate the real-time motion state of the sensor head from camera and IMU data,
+    \item estimate the static poses of auxiliary tags online or within a fixed lag window,
+    \item quantify uncertainty over pose, velocity, and nuisance parameters,
+    \item track an anchored-frame path despite actuator lag, deadband, bias, and noise,
+    \item evaluate all methods without using ground truth in inference.
+\end{enumerate}
+
+\subsection{Frames and notation}
+We use the following frames:
+\begin{itemize}[leftmargin=1.5em]
+    \item $W$: anchored world frame, chosen equal to the anchor-tag frame,
+    \item $A$: anchor-tag frame,
+    \item $C$: camera frame,
+    \item $I$: IMU frame,
+    \item $B$: robot base frame,
+    \item $T_j$: auxiliary tag frame for tag $j$.
+\end{itemize}
+We set $W \equiv A$, so the known anchor-tag pose is the identity transform. A rigid transform from frame $Y$ to frame $X$ is denoted $T_{XY}\in\SE(3)$.
+
+\subsection{Unknowns}
+For the online filter at time index $k$, the dynamic state is
+\begin{equation}
+    x_k = \big(R_{WI,k},\ p_{WI,k},\ v_{WI,k},\ b_{g,k},\ b_{a,k}\big),
+\end{equation}
+where $R_{WI,k}\in\SO(3)$ is the IMU orientation, $p_{WI,k}\in\R^3$ the IMU position, $v_{WI,k}\in\R^3$ the IMU velocity, and $b_{g,k},b_{a,k}\in\R^3$ the gyro and accelerometer biases.
+
+For the fixed-lag smoother over a window $\mathcal{K}$, we estimate
+\begin{equation}
+    X_{\mathrm{lag}} = \left\{x_k\right\}_{k\in\mathcal{K}} \cup \left\{T_{WT_j}\right\}_{j\in\mathcal{J}_{\mathrm{active}}} \cup \Theta_{\mathrm{act}},
+\end{equation}
+where $T_{WT_j}$ are auxiliary-tag poses and $\Theta_{\mathrm{act}}$ is an optional vector of actuator nuisance parameters, such as lag constants and gain errors.
+
+\section{Measurement and Process Models}
+\subsection{Camera measurement model}
+For each observed tag $j$ and local tag corner index $c\in\{1,2,3,4\}$, let $p^{(j)}_c\in\R^3$ denote the known local 3D corner of the tag square. The predicted image measurement is
+\begin{equation}
+    \hat{z}^{\mathrm{vis}}_{k,j,c} = \pi\!\left(\theta_{\mathrm{cam}},\ T_{CI}\, T_{IW,k}\, T_{WT_j}\, p^{(j)}_c\right),
+\end{equation}
+where $\theta_{\mathrm{cam}}$ are known camera intrinsics and $T_{CI}$ is the fixed camera-from-IMU transform. The residual is
+\begin{equation}
+    r^{\mathrm{vis}}_{k,j,c} = z^{\mathrm{vis}}_{k,j,c} - \hat{z}^{\mathrm{vis}}_{k,j,c}.
+\end{equation}
+The anchor tag is handled by fixing $T_{WT_0}=I$.
+
+\subsection{IMU process model}
+We use the standard continuous-time inertial model
+\begin{align}
+    \dot{R}_{WI} &= R_{WI}\, (\omega_m - b_g - n_g)^\wedge,\\
+    \dot{v}_{WI} &= g_W + R_{WI}(f_m - b_a - n_a),\\
+    \dot{p}_{WI} &= v_{WI},\\
+    \dot{b}_g &= n_{wg},\\
+    \dot{b}_a &= n_{wa},
+\end{align}
+where $\omega_m$ and $f_m$ are measured angular velocity and specific force, $g_W$ is gravity in the world frame, and $n_g,n_a,n_{wg},n_{wa}$ are white noise and bias random-walk terms.
+
+In the fixed-lag smoother, consecutive states are connected either by direct numerical integration or by IMU preintegration in the sense of \citet{forster2017preintegration}.
+
+\subsection{Actuator uncertainty model}
+The commanded signal for joint $i$ is not assumed to map directly to realized motion. A practical model is
+\begin{align}
+    u^{\mathrm{eff}}_i(t) &= u_i\big(t - d_i - \delta d_i(t)\big),\\
+    q_i^*(t) &= \alpha_i\,\mathrm{sat}\big(u^{\mathrm{eff}}_i(t)\big) + \beta_i + h_i(t),\\
+    \dot{q}_i(t) &= \mathrm{sat}_{\dot{q}_{\max}}\!\left(\frac{q_i^*(t)-q_i(t)}{\tau_i}\right) + w_{q_i}(t),
+\end{align}
+where $d_i$ is delay, $\delta d_i(t)$ timing jitter, $\alpha_i$ gain error, $\beta_i$ zero offset, $\tau_i$ a first-order lag constant, $h_i(t)$ a backlash or hysteresis term, and $w_{q_i}(t)$ process noise.
+
+This actuator model enters the simulation directly and may enter the smoother approximately through a reduced nuisance parameter vector $\Theta_{\mathrm{act}}$.
+
+\section{Probabilistic Formulation}
+\subsection{Likelihoods}
+For visual measurements we assume whitened corner residuals with robust loss,
+\begin{equation}
+    p\big(z^{\mathrm{vis}}\mid X\big) \propto \prod_{k,j,c} \exp\!\left(-\rho\left(\norm{\Sigma_{\mathrm{vis}}^{-1/2} r^{\mathrm{vis}}_{k,j,c}}^2\right)\right),
+\end{equation}
+where $\rho(\cdot)$ is typically Huber.
+
+For IMU constraints in the smoother we use Gaussian factors,
+\begin{equation}
+    p\big(z^{\mathrm{imu}}\mid X\big) \propto \prod_{(k,k+1)} \exp\!\left(-\frac{1}{2}\norm{\Sigma_{\mathrm{imu}}^{-1/2} r^{\mathrm{imu}}_{k,k+1}}^2\right).
+\end{equation}
+
+\subsection{Priors}
+The following priors are required:
+\begin{itemize}[leftmargin=1.5em]
+    \item anchor-frame definition through the known anchor tag,
+    \item initial dynamic-state prior for the filter,
+    \item initial velocity prior or initialization from a visual bootstrap,
+    \item zero-mean or weakly informative priors on biases,
+    \item optional weak priors on actuator nuisance parameters.
+\end{itemize}
+
+\subsection{MAP objective for the fixed-lag smoother}
+The lag-window maximum-a-posteriori estimate is
+\begin{equation}
+    X^* = \arg\min_X \left[
+    \sum r^{\mathrm{vis}\trans} \Sigma_{\mathrm{vis}}^{-1} r^{\mathrm{vis}}
+    + \sum r^{\mathrm{imu}\trans} \Sigma_{\mathrm{imu}}^{-1} r^{\mathrm{imu}}
+    + \sum r^{\mathrm{prior}\trans} \Sigma_{\mathrm{prior}}^{-1} r^{\mathrm{prior}}
+    + \sum \rho(\cdot)
+    \right],
+\end{equation}
+with the understanding that robustification applies to selected visual terms.
+
+\section{Estimation Architecture}
+\subsection{Online filter}
+The online estimator should be implemented as either an error-state EKF or an invariant EKF. The state propagated at IMU rate is the dynamic state $x_k$. Camera updates arrive asynchronously. When the anchor tag is visible, the update strongly constrains global pose in the anchored frame. Auxiliary tags contribute geometric corrections either directly in the filter or, preferably, through the fixed-lag smoother.
+
+\subsection{Fixed-lag smoother}
+The smoother maintains a short horizon, such as \SIrange{1}{3}{s}, and solves for cloned poses, velocities, biases, and active auxiliary-tag poses. The smoother is responsible for:
+\begin{itemize}[leftmargin=1.5em]
+    \item reducing short-horizon drift,
+    \item refining auxiliary-tag poses,
+    \item refining slowly varying nuisance parameters,
+    \item producing a local Laplace approximation to the posterior.
+\end{itemize}
+Incremental smoothing methods such as iSAM2 are a natural implementation path when runtime becomes important \citep{kaess2012isam2}.
+
+\subsection{Why this is not a plain full-state EKF}
+A single EKF over dynamic state, auxiliary tags, and servo nuisance parameters is possible but not recommended as the first serious implementation. Static landmark poses and weakly observable actuator parameters tend to behave better under repeated nonlinear refinement than under one large linearized covariance propagation. The split architecture reflects modern practice in visual-inertial estimation and supports clearer uncertainty reporting.
+
+\section{Controller}
+The controller receives the current anchored-frame estimate of the sensor-head or end-effector pose and computes a command toward the next waypoint. A position-based visual servoing interpretation is appropriate because the task is specified directly in a metric anchored frame \citep{chaumette2006part1, chaumette2007part2}. Let the desired pose be $T_{W\,\mathrm{des}}$ and the estimated current pose $\hat{T}_{W\,\mathrm{cur}}$. The pose error is
+\begin{equation}
+    e = \Log\!\left(\hat{T}_{W\,\mathrm{cur}}^{-1} T_{W\,\mathrm{des}}\right),
+\end{equation}
+and the controller maps $e$ to joint commands through the arm kinematic model and the uncertain servo interface.
+
+The controller must reduce aggressiveness or fall back to safer behavior when:
+\begin{itemize}[leftmargin=1.5em]
+    \item anchor-tag visibility is lost for too long,
+    \item pose covariance exceeds a threshold,
+    \item innovation statistics indicate estimator inconsistency,
+    \item the actuator model predicts persistent saturation or lag-induced overshoot.
+\end{itemize}
+
+\section{Isaac Sim Implementation Contract}
+\subsection{Runtime assumptions}
+The Isaac Sim implementation should begin in standalone Python mode with in-process queues and deterministic replay. ROS 2 mirroring can be added later, but initial validation should avoid topic and QoS confounds. Isaac Sim provides physics-based IMU sensors, camera publishing utilities, ROS 2 bridge functionality, and synthetic-data workflows that support this staged approach \citep{nvidia_isaac_imu, nvidia_isaac_ros2_bridge, nvidia_isaac_ros2_camera, nvidia_isaac_replicator, nvidia_isaac_sdr}.
+
+\subsection{Scene and sensors}
+The stage must contain:
+\begin{itemize}[leftmargin=1.5em]
+    \item one articulated robot arm,
+    \item one rigidly mounted camera,
+    \item one rigidly mounted IMU,
+    \item one known anchor tag fixed to the closest cube,
+    \item several auxiliary tags distributed to improve geometric coverage,
+    \item optional observer cameras for debugging and visualization.
+\end{itemize}
+Recommended initial rates are \SI{240}{Hz} physics, \SI{200}{Hz} IMU, \SI{30}{Hz} camera, \SIrange{50}{100}{Hz} filter output, and \SIrange{5}{10}{Hz} fixed-lag smoothing.
+
+\subsection{No-ground-truth inference rule}
+All raw measurements and all ground truth must be logged, but the inference path may consume only the raw sensor measurements, detector outputs, known calibration constants, and user-specified path commands. Ground truth may only be used by evaluation scripts.
+
+\section{Experimental Protocol}
+\subsection{Baselines}
+At minimum, the completed report must compare:
+\begin{enumerate}[leftmargin=1.5em]
+    \item visual-only anchored estimation,
+    \item fused visual-inertial estimation,
+    \item IMU-only dead reckoning,
+    \item known-map diagnostic,
+    \item open-loop control without estimation feedback,
+    \item closed-loop anchored-frame tracking with the proposed estimator.
+\end{enumerate}
+
+\subsection{Noise and stress regimes}
+Run at least three levels:
+\begin{itemize}[leftmargin=1.5em]
+    \item ideal or near-ideal,
+    \item nominal phone-like sensing plus nominal servo uncertainty,
+    \item stress sensing plus stress servo uncertainty.
+\end{itemize}
+Each headline configuration should use at least five seeds.
+
+\subsection{Metrics}
+The final report must include:
+\begin{itemize}[leftmargin=1.5em]
+    \item trajectory accuracy,
+    \item map accuracy for auxiliary tags,
+    \item path-tracking accuracy and completion rate,
+    \item parameter plausibility for biases and actuator terms,
+    \item uncertainty calibration via coverage and NEES,
+    \item runtime and failure statistics.
+\end{itemize}
+
+\section{Result Tables to Fill}
+\subsection{Run description}
+\begin{table}[H]
+\centering
+\caption{Headline Isaac Sim run description. Values are loaded from the latest generated Isaac run when available.}
+\begin{tabular}{ll}
+\toprule
+Quantity & Value \\
+\midrule
+\IsaacRunDescriptionRows
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Trajectory and map accuracy}
+\begin{table}[H]
+\centering
+\caption{Trajectory and map accuracy.}
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+Method & Mean pos [m] & P95 pos [m] & Max pos [m] & Mean rot [deg] & Reproj [px] & Map err [m] \\
+\midrule
+\IsaacTrajectoryMapRows
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Path-tracking performance}
+\begin{table}[H]
+\centering
+\caption{Closed-loop path-tracking results in the anchored world frame.}
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+Method & Mean wp err [m] & P95 wp err [m] & Completion [\%] & Mean time [s] & Saturation [\%] & Failures [\%] \\
+\midrule
+\IsaacPathTrackingRows
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Parameter plausibility}
+\begin{table}[H]
+\centering
+\caption{Parameter plausibility and residual diagnostics.}
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+Method & Mean $\norm{b_g}$ [rad/s] & Mean $\norm{b_a}$ [m/s$^2$] & Mean vis sq. & Mean IMU sq. & Actuator err. & Comment \\
+\midrule
+\IsaacParameterPlausibilityRows
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Uncertainty calibration}
+\begin{table}[H]
+\centering
+\caption{Uncertainty calibration.}
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccc}
+\toprule
+Method & Mean 95\% radius [m] & Empirical 95\% cover. [\%] & Pose NEES & Vel NEES & Sigma/error corr. \\
+\midrule
+\IsaacUncertaintyCalibrationRows
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Noise sensitivity}
+\begin{table}[H]
+\centering
+\caption{Noise and stress sensitivity over a seed sweep.}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llccccc}
+\toprule
+Preset & Method & Seeds & Mean pos [m] & Std pos [m] & Mean rot [deg] & Failure rate [\%] \\
+\midrule
+\IsaacNoiseSensitivityRows
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Figures to Fill}
+The completed checkpoint must include at least the following figures:
+\begin{enumerate}[leftmargin=1.5em]
+    \item system architecture diagram,
+    \item timeline diagram showing camera, IMU, filter, smoother, and controller rates,
+    \item 3D trajectory with anchor tag and auxiliary tags,
+    \item path-tracking plot in anchored frame,
+    \item convergence traces for the smoother,
+    \item residual histograms,
+    \item uncertainty calibration plot or coverage plot,
+    \item actuator-command versus realized-joint plot.
+\end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \IfFileExists{\IsaacLatestReportDataDir/system_architecture.png}{%
+        \includegraphics[width=0.92\linewidth]{\IsaacLatestReportDataDir/system_architecture.png}%
+    }{%
+        \fbox{\rule{0pt}{2.1in}\rule{0.92\linewidth}{0pt}}%
+    }
+    \caption{System architecture: Isaac Sim runtime, online filter, fixed-lag smoother, and controller.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \IfFileExists{\IsaacLatestReportDataDir/timing_timeline.png}{%
+        \includegraphics[width=0.92\linewidth]{\IsaacLatestReportDataDir/timing_timeline.png}%
+    }{%
+        \fbox{\rule{0pt}{2.1in}\rule{0.92\linewidth}{0pt}}%
+    }
+    \caption{Timeline summary for camera, IMU, filter, smoother, and controller rates.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \IfFileExists{\IsaacLatestReportDataDir/trajectory_path.png}{%
+        \includegraphics[width=0.92\linewidth]{\IsaacLatestReportDataDir/trajectory_path.png}%
+    }{%
+        \fbox{\rule{0pt}{2.1in}\rule{0.92\linewidth}{0pt}}%
+    }
+    \caption{Headline anchored-frame trajectory projection with waypoint context.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \IfFileExists{\IsaacLatestReportDataDir/path_tracking.png}{%
+        \includegraphics[width=0.92\linewidth]{\IsaacLatestReportDataDir/path_tracking.png}%
+    }{%
+        \fbox{\rule{0pt}{2.1in}\rule{0.92\linewidth}{0pt}}%
+    }
+    \caption{Path-tracking plot in the anchored world frame.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \IfFileExists{\IsaacLatestReportDataDir/smoother_convergence.png}{%
+        \includegraphics[width=0.92\linewidth]{\IsaacLatestReportDataDir/smoother_convergence.png}%
+    }{%
+        \fbox{\rule{0pt}{2.1in}\rule{0.92\linewidth}{0pt}}%
+    }
+    \caption{Convergence trace for the smoother and uncertainty summary.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \IfFileExists{\IsaacLatestReportDataDir/residual_histogram.png}{%
+        \includegraphics[width=0.92\linewidth]{\IsaacLatestReportDataDir/residual_histogram.png}%
+    }{%
+        \fbox{\rule{0pt}{2.1in}\rule{0.92\linewidth}{0pt}}%
+    }
+    \caption{Residual or innovation histogram derived from the latest artifact bundle.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \IfFileExists{\IsaacLatestReportDataDir/uncertainty_calibration.png}{%
+        \includegraphics[width=0.92\linewidth]{\IsaacLatestReportDataDir/uncertainty_calibration.png}%
+    }{%
+        \fbox{\rule{0pt}{2.1in}\rule{0.92\linewidth}{0pt}}%
+    }
+    \caption{Uncertainty calibration or coverage plot generated from the latest artifact bundle.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \IfFileExists{\IsaacLatestReportDataDir/actuator_command_vs_realized.png}{%
+        \includegraphics[width=0.92\linewidth]{\IsaacLatestReportDataDir/actuator_command_vs_realized.png}%
+    }{%
+        \fbox{\rule{0pt}{2.1in}\rule{0.92\linewidth}{0pt}}%
+    }
+    \caption{Commanded versus realized joint motion under the uncertain servo model.}
+\end{figure}
+
+\section{Expected Discussion Structure}
+The completed paper should answer the following questions explicitly.
+
+\begin{enumerate}[leftmargin=1.5em]
+    \item Does fusion beat visual-only on the nominal and stress regimes?
+    \item If fusion is worse on easy runs, which model mismatch explains the failure?
+    \item Are the estimated bias norms and actuator nuisance estimates physically plausible?
+    \item Does the controller improve path tracking under uncertain actuation compared to open loop?
+    \item Are the reported covariances calibrated or merely conservative / overconfident?
+    \item How sensitive is the method to anchor occlusion and tag sparsity?
+\end{enumerate}
+
+\section{Limitations}
+The completed report should discuss at least the following limitations if they remain unresolved:
+\begin{itemize}[leftmargin=1.5em]
+    \item mismatch between Isaac IMU semantics and estimator assumptions,
+    \item limited realism of the camera photometric model,
+    \item dependence on fiducial visibility,
+    \item simplifications in the actuator uncertainty model,
+    \item fixed extrinsic calibration assumptions,
+    \item limited transfer evidence to real phone-on-arm data.
+\end{itemize}
+
+\section{Conclusion}
+The final completed version of this report should establish whether an Isaac Sim-backed anchored visual-inertial system with uncertain servo actuation can support scientifically credible online state estimation and anchored-frame path tracking. The key requirement is not merely low trajectory error, but a coherent story across modelling assumptions, actuator realism, control performance, and uncertainty calibration.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

@@ -1,0 +1,22 @@
+{
+  "distortion_coefficients": [
+    0.15084998,
+    -0.44805366,
+    0.38709834,
+    0.0,
+    0.0
+  ],
+  "distortion_model": "opencv_pinhole",
+  "frame_id": "C",
+  "height_px": 1080,
+  "intrinsics": {
+    "cx_px": 960.292272,
+    "cy_px": 543.63216,
+    "fx_px": 1293.17136,
+    "fy_px": 1293.17136
+  },
+  "name": "phone_main",
+  "rate_hz": 30.0,
+  "source_toml_path": "config/camera/pixel_9a_main.toml",
+  "width_px": 1920
+}

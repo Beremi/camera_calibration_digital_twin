@@ -1,4 +1,5 @@
 .venv/
+.venv-isaac/
 .pytest_cache/
 .vscode/
 
@@ -26,3 +27,12 @@ docs/**/*.toc
 EXPERT_HANDOFF_CHECKPOINT_01.md
 
 .DS_Store
+report_tex/publication_report_template.bbl
+report_tex/publication_report_template.aux
+report_tex/publication_report_template.blg
+report_tex/publication_report_template.fdb_latexmk
+report_tex/publication_report_template.fls
+report_tex/publication_report_template.log
+report_tex/publication_report_template.out
+report_tex/publication_report_template.pdf
+report_tex/publication_report_template.synctex.gz

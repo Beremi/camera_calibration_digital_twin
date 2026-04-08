@@ -1,0 +1,24 @@
+{
+  "bias_model": {
+    "accel_bias_initial_mps2": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "gyro_bias_initial_rps": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "frame_id": "I",
+  "gravity_world_mps2": [
+    0.0,
+    0.0,
+    -9.81
+  ],
+  "name": "phone_nominal",
+  "noise_preset": "imu_nominal_phone",
+  "rate_hz": 200.0,
+  "read_gravity": true
+}

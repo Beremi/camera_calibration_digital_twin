@@ -1,0 +1,17 @@
+{
+  "articulation_prim_path": "/World/Robot",
+  "camera_mount_prim_path": "/World/Robot/phone_camera",
+  "control_mode": "position",
+  "ee_frame": "tool0",
+  "imu_mount_prim_path": "/World/Robot/phone_imu",
+  "joint_names": [
+    "shoulder_pan_joint",
+    "shoulder_lift_joint",
+    "elbow_joint",
+    "wrist_1_joint",
+    "wrist_2_joint",
+    "wrist_3_joint"
+  ],
+  "name": "ur5e_phone_head",
+  "robot_name": "ur5e"
+}

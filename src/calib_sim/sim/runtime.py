@@ -8,7 +8,11 @@ installed in the current environment.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+
+from calib_sim.sim.isaac_compat import prepare_isaac_runtime_environment
+
+
+prepare_isaac_runtime_environment()
 
 try:  # pragma: no cover - Isaac Sim is not expected in basic unit tests.
     from isaacsim import SimulationApp  # type: ignore
@@ -49,7 +53,7 @@ class SimulationRuntime:
         if SimulationApp is None:
             raise RuntimeError(
                 "Isaac Sim Python modules are not available in this environment. "
-                "Install Isaac Sim 5.1 and run this module from its Python environment."
+                "Install Isaac Sim 6.0 and run this module from its Python environment."
             )
 
         self.app = SimulationApp(

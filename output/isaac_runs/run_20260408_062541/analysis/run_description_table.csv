@@ -1,0 +1,12 @@
+quantity,value
+run_id,run_20260408_062541
+isaac_sim_version,available
+physics_rate_hz,240.0
+imu_rate_hz,200.0
+camera_rate_hz,30.0
+frames,0
+imu_packets,0
+observed_auxiliary_tags,0
+anchor_tag_id,0
+noise_preset,imu_nominal_phone
+seed,7

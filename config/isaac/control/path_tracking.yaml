@@ -1,0 +1,16 @@
+name: anchored_path_tracking
+path_frame: W
+command_space: anchored_position_delta
+proportional_gain: 1.0
+max_command_abs: 0.25
+gates:
+  max_position_radius_95_m: 0.10
+  max_innovation_norm: 0.25
+  max_anchor_lost_steps: 5
+waypoints:
+  - position_world_m: [0.0, 0.0, 0.0]
+    tolerance_m: 0.02
+  - position_world_m: [0.10, 0.0, 0.0]
+    tolerance_m: 0.02
+  - position_world_m: [0.10, 0.10, 0.0]
+    tolerance_m: 0.02

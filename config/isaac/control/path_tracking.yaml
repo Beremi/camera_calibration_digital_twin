@@ -1,8 +1,15 @@
 name: anchored_path_tracking
 path_frame: W
 command_space: anchored_position_delta
-proportional_gain: 0.8
-max_command_abs: 0.05
+proportional_gain: 0.6
+max_command_abs: 0.03
+max_position_step_m: 0.02
+ik_retry_alphas: [1.0, 0.5, 0.25, 0.1, 0.0]
+degrade_after_consecutive_ik_failures: 4
+degraded_gain_scale: 0.35
+workspace_aabb_world_m:
+  min: [0.50, -0.45, 1.10]
+  max: [0.74, -0.22, 1.23]
 gates:
   max_position_radius_95_m: 0.25
   max_innovation_norm: 2.0

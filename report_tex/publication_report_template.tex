@@ -27,47 +27,41 @@
 \newcommand{\SO}{\mathrm{SO}(3)}
 \newcommand{\SE}{\mathrm{SE}(3)}
 \newcommand{\ArtifactPending}{\textit{pending Isaac artifact}}
+\newcommand{\IsaacLatestFirstPassSuiteReportDataDir}{../output/isaac_runs/latest_first_pass_suite/analysis/report_data}
 \newcommand{\IsaacLatestCompleteReportDataDir}{../output/isaac_runs/latest_complete/analysis/report_data}
 \newcommand{\IsaacLatestAnyReportDataDir}{../output/isaac_runs/latest_any/analysis/report_data}
 \newcommand{\IsaacLatestReportDataDir}{../output/isaac_runs/latest/analysis/report_data}
-\newcommand{\IsaacRunDescriptionRows}{%
-Run id & \ArtifactPending{} \\
-Isaac Sim version & \ArtifactPending{} \\
-Physics rate [Hz] & \ArtifactPending{} \\
-IMU rate [Hz] & \ArtifactPending{} \\
-Camera rate [Hz] & \ArtifactPending{} \\
-Frames & \ArtifactPending{} \\
+\newcommand{\IsaacFirstPassCompletenessRows}{%
+Canonical run id & \ArtifactPending{} \\
+Estimator mode & \ArtifactPending{} \\
+Controller mode & \ArtifactPending{} \\
+Bootstrap policy & \ArtifactPending{} \\
+Actuation preset & \ArtifactPending{} \\
+Duration [s] & \ArtifactPending{} \\
+Camera frames & \ArtifactPending{} \\
 IMU packets & \ArtifactPending{} \\
-Observed auxiliary tags & \ArtifactPending{} \\
-Anchor tag id & \ArtifactPending{} \\
-Noise preset & \ArtifactPending{} \\
-Seed & \ArtifactPending{} \\
+Commands & \ArtifactPending{} \\
+Controller diagnostics & \ArtifactPending{} \\
+Filter states & \ArtifactPending{} \\
+Smoother states & \ArtifactPending{} \\
+Uncertainty states & \ArtifactPending{} \\
 }
-\newcommand{\IsaacTrajectoryMapRows}{%
-Visual-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
-Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
-IMU-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & n/a & n/a \\
-Known-map diagnostic & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & n/a \\
+\newcommand{\IsaacFirstPassMatrixRows}{%
+visual / open-loop & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+visual / closed-loop & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+fused / open-loop & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+fused / closed-loop & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
 }
-\newcommand{\IsaacPathTrackingRows}{%
-Open-loop commands & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
-Closed-loop visual-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
-Closed-loop fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+\newcommand{\IsaacFirstPassReproducibilityRows}{%
+visual / closed-loop & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+fused / closed-loop & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
 }
-\newcommand{\IsaacParameterPlausibilityRows}{%
-Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+\newcommand{\IsaacFirstPassControllerRows}{%
+Canonical fused / closed-loop & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
 }
-\newcommand{\IsaacUncertaintyCalibrationRows}{%
-Visual-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & n/a & \ArtifactPending{} \\
-Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
-}
-\newcommand{\IsaacNoiseSensitivityRows}{%
-Ideal & Visual-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
-Ideal & Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
-Nominal & Visual-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
-Nominal & Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
-Stress & Visual-only & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
-Stress & Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+\newcommand{\IsaacFirstPassActuationRows}{%
+none & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+servo\_nominal & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
 }
 \newcommand{\vect}[1]{\boldsymbol{#1}}
 \newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
@@ -77,15 +71,20 @@ Stress & Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & 
 \newcommand{\Log}{\mathrm{Log}}
 \newcommand{\diag}{\mathrm{diag}}
 \newcommand{\trace}{\mathrm{tr}}
-\IfFileExists{\IsaacLatestCompleteReportDataDir/paper_artifacts.tex}{%
-    \renewcommand{\IsaacLatestReportDataDir}{\IsaacLatestCompleteReportDataDir}%
-    \input{\IsaacLatestCompleteReportDataDir/paper_artifacts.tex}%
+\IfFileExists{\IsaacLatestFirstPassSuiteReportDataDir/paper_artifacts.tex}{%
+    \renewcommand{\IsaacLatestReportDataDir}{\IsaacLatestFirstPassSuiteReportDataDir}%
+    \input{\IsaacLatestFirstPassSuiteReportDataDir/paper_artifacts.tex}%
 }{%
-    \IfFileExists{\IsaacLatestAnyReportDataDir/paper_artifacts.tex}{%
-        \renewcommand{\IsaacLatestReportDataDir}{\IsaacLatestAnyReportDataDir}%
-        \input{\IsaacLatestAnyReportDataDir/paper_artifacts.tex}%
+    \IfFileExists{\IsaacLatestCompleteReportDataDir/paper_artifacts.tex}{%
+        \renewcommand{\IsaacLatestReportDataDir}{\IsaacLatestCompleteReportDataDir}%
+        \input{\IsaacLatestCompleteReportDataDir/paper_artifacts.tex}%
     }{%
-        \IfFileExists{\IsaacLatestReportDataDir/paper_artifacts.tex}{\input{\IsaacLatestReportDataDir/paper_artifacts.tex}}{}%
+        \IfFileExists{\IsaacLatestAnyReportDataDir/paper_artifacts.tex}{%
+            \renewcommand{\IsaacLatestReportDataDir}{\IsaacLatestAnyReportDataDir}%
+            \input{\IsaacLatestAnyReportDataDir/paper_artifacts.tex}%
+        }{%
+            \IfFileExists{\IsaacLatestReportDataDir/paper_artifacts.tex}{\input{\IsaacLatestReportDataDir/paper_artifacts.tex}}{}%
+        }%
     }%
 }
 
@@ -98,7 +97,7 @@ Stress & Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & 
 
 \begin{center}
 \fbox{\parbox{0.94\linewidth}{
-\textbf{How to use this document.} This is a publication-grade template and writing scaffold. The method, notation, problem statement, evaluation protocol, and references are already written. Measured result rows and figures must be generated from Isaac run artifacts under \texttt{output/isaac\_runs/<run\_id>/analysis/report\_data/}. The paper prefers \texttt{output/isaac\_runs/latest\_complete/analysis/report\_data/}, then falls back to \texttt{latest\_any}, and only then to explicit pending markers.
+\textbf{How to use this document.} This is a publication-grade template and writing scaffold. The method, notation, problem statement, evaluation protocol, and references are already written. Measured result rows and figures must be generated from Isaac run artifacts under \texttt{output/isaac\_runs/<run\_id>/analysis/report\_data/}. The paper prefers the suite bundle under \texttt{output/isaac\_runs/latest\_first\_pass\_suite/analysis/report\_data/}, then falls back to \texttt{latest\_complete}, then \texttt{latest\_any}, and only then to explicit pending markers.
 }}
 \end{center}
 
@@ -106,7 +105,7 @@ Stress & Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & 
 We consider a robot arm carrying a phone-like sensing head consisting of a monocular camera and an inertial measurement unit (IMU). The task is to track a prescribed path in a coordinate frame fixed by one known anchor tag while treating the remaining visible tags as static but initially unknown landmarks, and while accounting for realistic actuator uncertainty rather than ideal joint execution. We propose a two-timescale architecture in which a low-latency visual-inertial filter estimates the dynamic motion state online, a fixed-lag smoother refines auxiliary-tag poses and nuisance parameters, and a path-tracking controller closes the loop on the estimated anchored-frame pose. The implementation target is Isaac Sim with physics-based IMU simulation, camera rendering, and explicit logging of raw measurements, ground truth, commands, realized actuator states, estimates, and uncertainty. This report defines the exact estimation problem, the measurement and process models, the actuator uncertainty model, the implementation contract, the evaluation protocol, and the publication-ready result tables and figures that must be produced by the checkpoint. Experimental placeholders are provided for trajectory accuracy, map accuracy, path-tracking performance, uncertainty calibration, and robustness under sensing and actuation stress.\end{abstract}
 
 \section{Draft Status}
-This repository now contains a completed first-pass Isaac runtime, a dedicated Isaac-capable virtual environment path, and artifact-driven report generators. Any available complete run under \texttt{output/isaac\_runs/latest\_complete/} can populate the manifest, metric, and figure slots below automatically. When no complete run is present, the paper falls back to \texttt{latest\_any} and then to the checked-in placeholder markers so the document still compiles in a fresh checkout. Headline comparison rows still require executed Isaac benchmark sweeps and seed studies, so any entry rendered as \ArtifactPending{} should be read as a reporting gap rather than as a measured outcome. Existing browser-simulator artifacts may inform background wording or a historical appendix, but they are not substitutes for the Isaac-only trajectory, control, actuator, or manifest tables in this paper.
+This repository now contains a completed first-pass Isaac runtime, a dedicated Isaac-capable virtual environment path, per-run artifact generators, and a suite-level report path. When \texttt{output/isaac\_runs/latest\_first\_pass\_suite/} exists, the paper renders the benchmark matrix, reproducibility table, control diagnostics, actuation comparison, and canonical figures from that suite bundle. When the suite bundle does not exist, the paper falls back to \texttt{latest\_complete}, then \texttt{latest\_any}, and only then to placeholder markers so the document still compiles in a fresh checkout. Existing browser-simulator artifacts may inform background wording or a historical appendix, but they are not substitutes for the Isaac-only first-pass benchmark tables in this paper.
 
 \section{Introduction}
 Real-time state estimation and control for camera-equipped robot arms sit at the intersection of visual-inertial estimation, fiducial-aided localization, and closed-loop robot control. Visual-inertial methods achieve robust motion estimation by combining high-rate inertial propagation with visual corrections from geometric image measurements \citep{mourikis2007msckf, forster2017preintegration, leutenegger2015okvis, qin2018vinsmono}. Fiducials such as AprilTags provide metric, repeatable geometric constraints that are especially attractive for calibration, benchmarking, and controlled robotic experiments \citep{olson2011apriltag, wang2016apriltag2}. For online operation, the key challenge is not merely estimating pose, but doing so under realistic sensing and actuation imperfections while retaining calibrated uncertainty and reproducibility.
@@ -328,113 +327,98 @@ The final report must include:
     \item runtime and failure statistics.
 \end{itemize}
 
-\section{Result Tables to Fill}
-\subsection{Run description}
+\section{First-Pass Result Tables}
+\subsection{Runtime completeness and data volume}
 \begin{table}[H]
 \centering
-\caption{Headline Isaac Sim run description. Values are loaded from the latest complete Isaac run when available, otherwise the latest incomplete run or the pending placeholders.}
+\caption{Canonical first-pass fused / closed-loop run used for the suite-level paper bundle.}
 \begin{tabular}{ll}
 \toprule
 Quantity & Value \\
 \midrule
-\IsaacRunDescriptionRows
+\IsaacFirstPassCompletenessRows
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Trajectory and map accuracy}
+\subsection{2x2 estimator/controller matrix}
 \begin{table}[H]
 \centering
-\caption{Trajectory and map accuracy.}
+\caption{Canonical first-pass comparison matrix at fixed scene, path, rates, actuation preset, and seed.}
 \small
 \setlength{\tabcolsep}{4pt}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lcccccc}
 \toprule
-Method & Mean pos [m] & P95 pos [m] & Max pos [m] & Mean rot [deg] & Reproj [px] & Map err [m] \\
+Mode & Mean pos [m] & P95 pos [m] & Mean wp err [m] & Completion [\%] & IK fail [\%] & Anchor visible [\%] \\
 \midrule
-\IsaacTrajectoryMapRows
+\IsaacFirstPassMatrixRows
 \bottomrule
 \end{tabular}%
 }
 \end{table}
 
-\subsection{Path-tracking performance}
+\subsection{Five-seed reproducibility}
 \begin{table}[H]
 \centering
-\caption{Closed-loop path-tracking results in the anchored world frame.}
-\small
-\setlength{\tabcolsep}{4pt}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lcccccc}
-\toprule
-Method & Mean wp err [m] & P95 wp err [m] & Completion [\%] & Mean time [s] & Saturation [\%] & Failures [\%] \\
-\midrule
-\IsaacPathTrackingRows
-\bottomrule
-\end{tabular}%
-}
-\end{table}
-
-\subsection{Parameter plausibility}
-\begin{table}[H]
-\centering
-\caption{Parameter plausibility and residual diagnostics.}
-\small
-\setlength{\tabcolsep}{4pt}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lcccccc}
-\toprule
-Method & Mean $\norm{b_g}$ [rad/s] & Mean $\norm{b_a}$ [m/s$^2$] & Mean vis sq. & Mean IMU sq. & Actuator err. & Comment \\
-\midrule
-\IsaacParameterPlausibilityRows
-\bottomrule
-\end{tabular}%
-}
-\end{table}
-
-\subsection{Uncertainty calibration}
-\begin{table}[H]
-\centering
-\caption{Uncertainty calibration.}
+\caption{Reproducibility over seeds $11,17,23,31,47$ for the two benchmarked closed-loop estimator modes.}
 \small
 \setlength{\tabcolsep}{4pt}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccc}
 \toprule
-Method & Mean 95\% radius [m] & Empirical 95\% cover. [\%] & Pose NEES & Vel NEES & Sigma/error corr. \\
+Mode & Seeds & Mean pos [m] & Mean wp err [m] & Completion [\%] & IK fail [\%] \\
 \midrule
-\IsaacUncertaintyCalibrationRows
+\IsaacFirstPassReproducibilityRows
 \bottomrule
 \end{tabular}%
 }
 \end{table}
 
-\subsection{Noise sensitivity}
+\subsection{Controller and observability diagnostics}
 \begin{table}[H]
 \centering
-\caption{Noise and stress sensitivity over a seed sweep.}
+\caption{Diagnostics for the canonical fused / closed-loop nominal run.}
 \small
 \setlength{\tabcolsep}{4pt}
-\begin{tabular}{llccccc}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccc}
 \toprule
-Preset & Method & Seeds & Mean pos [m] & Std pos [m] & Mean rot [deg] & Failure rate [\%] \\
+Run & IK fail [\%] & Dominant reason & Anchor visible [\%] & Relocalizations & Mean anchor innov. & Mean actuator err. \\
 \midrule
-\IsaacNoiseSensitivityRows
+\IsaacFirstPassControllerRows
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
-\section{Figures to Fill}
-The completed checkpoint must include at least the following figures:
+\subsection{Actuation comparison}
+\begin{table}[H]
+\centering
+\caption{Minimum actuation sensitivity comparison for the fused / closed-loop headline cell at the canonical seed.}
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+Actuation & Mean wp err [m] & Completion [\%] & IK fail [\%] & Mean actuator err. \\
+\midrule
+\IsaacFirstPassActuationRows
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\section{First-Pass Figures}
+The completed first-pass suite must include at least the following figures:
 \begin{enumerate}[leftmargin=1.5em]
     \item system architecture diagram,
     \item timeline diagram showing camera, IMU, filter, smoother, and controller rates,
-    \item 3D trajectory with anchor tag and auxiliary tags,
+    \item anchored-frame trajectory projection with waypoint context,
     \item path-tracking plot in anchored frame,
-    \item convergence traces for the smoother,
-    \item residual histograms,
+    \item IK-failure or controller-diagnostics timeline,
     \item uncertainty calibration plot or coverage plot,
+    \item residual / innovation histogram,
     \item actuator-command versus realized-joint plot.
 \end{enumerate}
 
@@ -480,12 +464,12 @@ The completed checkpoint must include at least the following figures:
 
 \begin{figure}[H]
     \centering
-    \IfFileExists{\IsaacLatestReportDataDir/smoother_convergence.png}{%
-        \includegraphics[width=0.92\linewidth]{\IsaacLatestReportDataDir/smoother_convergence.png}%
+    \IfFileExists{\IsaacLatestReportDataDir/ik_failure_timeline.png}{%
+        \includegraphics[width=0.92\linewidth]{\IsaacLatestReportDataDir/ik_failure_timeline.png}%
     }{%
         \fbox{\rule{0pt}{2.1in}\rule{0.92\linewidth}{0pt}}%
     }
-    \caption{Convergence trace for the smoother and uncertainty summary.}
+    \caption{Controller diagnostics timeline showing when IK fell back to hold or degraded behavior.}
 \end{figure}
 
 \begin{figure}[H]

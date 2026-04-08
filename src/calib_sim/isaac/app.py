@@ -39,7 +39,10 @@ class IsaacAppBootstrapConfig:
     seed: int = 7
     duration_s: float = 10.0
     max_steps: int | None = None
-    mode: str = "closed-loop"
+    estimator_mode: str = "fused"
+    controller_mode: str = "closed-loop"
+    bootstrap_control_policy: str = "hold_until_first_detection"
+    mode: str | None = None
     promote_latest_complete: bool = False
     allow_gt_debug_control: bool = False
 
@@ -68,7 +71,10 @@ class IsaacAppBootstrapConfig:
             seed=int(self.seed),
             duration_s=float(self.duration_s),
             max_steps=None if self.max_steps is None else int(self.max_steps),
-            mode=str(self.mode),
+            estimator_mode=str(self.estimator_mode),
+            controller_mode=str(self.controller_mode),
+            bootstrap_control_policy=str(self.bootstrap_control_policy),
+            mode=None if self.mode is None else str(self.mode),
             promote_latest_complete=bool(self.promote_latest_complete),
             allow_gt_debug_control=bool(self.allow_gt_debug_control),
             config_paths=config_paths,

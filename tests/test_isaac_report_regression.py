@@ -29,14 +29,31 @@ def test_publication_report_template_compiles_from_source(tmp_path: Path) -> Non
     tex_source = tex_path.read_text(encoding="utf-8")
 
     assert r"\TBD" not in tex_source
+    assert "latest_first_pass_suite" in tex_source
     assert "latest_complete" in tex_source
     assert "latest_any" in tex_source
+    assert "IsaacFirstPassMatrixRows" in tex_source
+    assert "ik_failure_timeline.png" in tex_source
     assert "system_architecture.png" in tex_source
     assert "current workspace does not include the Isaac Sim Python modules" not in tex_source
 
+    for generated_name in (
+        "publication_report_template.aux",
+        "publication_report_template.bbl",
+        "publication_report_template.blg",
+        "publication_report_template.fdb_latexmk",
+        "publication_report_template.fls",
+        "publication_report_template.log",
+        "publication_report_template.out",
+        "publication_report_template.pdf",
+    ):
+        generated_path = target_dir / generated_name
+        if generated_path.exists():
+            generated_path.unlink()
+
     if LATEXMK is not None:
         subprocess.run(
-            [LATEXMK, "-pdf", tex_path.name],
+            [LATEXMK, "-g", "-pdf", tex_path.name],
             cwd=str(target_dir),
             check=True,
             capture_output=True,

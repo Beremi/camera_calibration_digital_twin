@@ -14,6 +14,7 @@ from calib_sim.isaac.estimation.state_defs import FilterStateSnapshot, SmootherS
 from calib_sim.isaac.logging.run_manifest import IsaacRunManifest
 from calib_sim.isaac.logging.schemas import (
     IsaacCameraFramePacket,
+    IsaacControllerDiagnosticPacket,
     IsaacImuPacket,
     IsaacJointCommandPacket,
     IsaacRealizedJointPacket,
@@ -101,6 +102,13 @@ class IsaacRunWriter:
     def write_command(self, packet: IsaacJointCommandPacket) -> None:
         self._append_csv_row(self.raw_dir / "commands.csv", packet.csv_fieldnames(), packet.to_csv_row())
 
+    def write_controller_diagnostic(self, packet: IsaacControllerDiagnosticPacket) -> None:
+        self._append_csv_row(
+            self.raw_dir / "controller_diagnostics.csv",
+            packet.csv_fieldnames(),
+            packet.to_csv_row(),
+        )
+
     def write_realized_state(self, packet: IsaacRealizedJointPacket) -> None:
         self._append_csv_row(self.raw_dir / "realized_joints.csv", packet.csv_fieldnames(), packet.to_csv_row())
 
@@ -142,6 +150,7 @@ class IsaacRunWriter:
     append_estimator_input = write_estimator_input
     append_imu = write_imu_packet
     append_command = write_command
+    append_controller_diagnostic = write_controller_diagnostic
     append_realized_joint = write_realized_state
     append_gt_camera = lambda self, payload: self.write_gt(namespace="camera", payload=payload)
     append_gt_imu = lambda self, payload: self.write_gt(namespace="imu", payload=payload)

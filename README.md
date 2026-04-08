@@ -4,17 +4,17 @@ This repository is now in a hybrid state:
 
 - the preserved browser-based checkpoints remain the regression baseline and historical path
 - a first real Isaac Sim pass now exists locally, with live sensing, online estimation, closed-loop control, and artifact-driven reporting
-- the Isaac path is usable for first-pass experiments, but it is not yet tuned or benchmark-complete
+- the Isaac path is usable for first-pass experiments, and the branch now targets a suite-driven first scientifically complete pass
 
 The current frozen checkpoint is documented in [docs/checkpoint_01.md](docs/checkpoint_01.md). It corresponds to the corrected analysis run `output/interactive_runs/run_20260406_083611` and represents the first checkpoint where the interactive app, recording pipeline, visual pose fitting, and IMU trajectory reconstruction are all working together cleanly enough to preserve.
 
 The new batch-estimation milestones are documented in [docs/checkpoint_02_batch_estimation.md](docs/checkpoint_02_batch_estimation.md), [docs/checkpoint_03_scientific_report.md](docs/checkpoint_03_scientific_report.md), and [docs/estimation.md](docs/estimation.md).
 
-As of April 8, 2026, the current local Isaac first-pass headline run in this workspace is:
+As of April 8, 2026, the first-pass Isaac publication workflow is driven by:
 
-- `output/isaac_runs/first_real_pass_nominal_v2`
+- `output/isaac_runs/latest_first_pass_suite`
 
-The paper/report pipeline consumes:
+The per-run fallback publication input remains:
 
 - `output/isaac_runs/latest_complete`
 
@@ -111,17 +111,32 @@ For the current mounted-camera Franka first pass:
 ```bash
 source .venv-isaac/bin/activate
 export OMNI_KIT_ACCEPT_EULA=YES
-python scripts/run_isaac_anchor_vio.py --headless --duration-s 10.0 --promote-latest-complete
+python scripts/run_isaac_anchor_vio.py --headless --duration-s 8.0 --estimator-mode fused --controller-mode closed-loop --bootstrap-control-policy hold_until_first_detection --promote-latest-complete
 ```
 
-To regenerate report artifacts for a finished Isaac run:
+To execute the first-pass benchmark suite and build suite-level publication artifacts:
+
+```bash
+source .venv-isaac/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+python scripts/run_isaac_ablation_suite.py --headless
+```
+
+To regenerate per-run report artifacts for a finished Isaac run:
 
 ```bash
 source .venv/bin/activate
-python scripts/generate_isaac_report_artifacts.py output/isaac_runs/first_real_pass_nominal_v2
+python scripts/generate_isaac_report_artifacts.py output/isaac_runs/first_pass_fused_closed-loop_servo_nominal_seed_007
 ```
 
-To compile the paper against `latest_complete`:
+Replay on this branch is analysis/report regeneration only. It does not re-solve the estimator from raw logs:
+
+```bash
+source .venv/bin/activate
+python scripts/replay_isaac_anchor_vio.py output/isaac_runs/first_pass_fused_closed-loop_servo_nominal_seed_007
+```
+
+To compile the paper against the suite bundle:
 
 ```bash
 source .venv/bin/activate
@@ -218,7 +233,7 @@ What is still not final:
 
 - camera placement and control tuning are first-pass, not polished
 - headline quality metrics are real but not yet competitive or tuned
-- multi-seed and stress-ablation campaigns remain future work
+- the first-pass suite is intentionally narrow: 2x2 estimator/controller matrix, 5-seed closed-loop reproducibility, and one actuation comparison
 - ROS 2 mirroring and broader Isaac integration remain secondary to the standalone first-pass runtime
 
 ## Documentation

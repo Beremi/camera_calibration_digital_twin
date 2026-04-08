@@ -46,6 +46,7 @@ class FilterStateSnapshot:
             "accel_bias_mps2": [float(value) for value in np.asarray(self.accel_bias_mps2, dtype=np.float64)],
             "covariance": _matrix_json(self.covariance),
             "anchor_visible": bool(self.anchor_visible),
+            "estimator_mode": self.mode,
             "mode": self.mode,
             "innovation_diagnostics": {str(key): float(value) for key, value in self.innovation_diagnostics.items()},
         }

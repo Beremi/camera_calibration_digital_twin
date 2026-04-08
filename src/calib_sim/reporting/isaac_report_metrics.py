@@ -194,6 +194,26 @@ def _waypoint_summary(control_config: dict[str, Any], filter_rows: list[dict[str
     }
 
 
+def _ground_truth_waypoint_summary(
+    control_config: dict[str, Any],
+    camera_gt_rows: list[dict[str, Any]],
+    start_time_s: float | None,
+) -> dict[str, float | None]:
+    positions: list[tuple[float, np.ndarray]] = []
+    for row in camera_gt_rows:
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        position = _position_from_gt_row(row)
+        if timestamp is not None and position is not None:
+            positions.append((timestamp, position))
+    if not positions:
+        return _waypoint_summary(control_config, [], start_time_s)
+    return _waypoint_summary(
+        control_config,
+        [{"timestamp_s": timestamp, "position_world_m": position.tolist()} for timestamp, position in positions],
+        start_time_s,
+    )
+
+
 def _first_realized_position(row: dict[str, Any]) -> float | None:
     raw = row.get("positions")
     if raw in ("", None):
@@ -271,6 +291,8 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
     filter_rows = bundle.estimates["filter_state"]
     smoother_rows = bundle.estimates["smoother_state"]
     command_rows = bundle.raw["commands"]
+    controller_diagnostics_rows = bundle.raw["controller_diagnostics"]
+    camera_gt_rows = bundle.gt.get("camera_gt", []) if bundle.gt else []
 
     command_values = [abs(value) for row in command_rows if (value := _first_command_value(row)) is not None]
     max_command = max(command_values) if command_values else 0.0
@@ -311,13 +333,85 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
     position_nees_values = [
         float(match["position_nees"]) for match in position_matches if match.get("position_nees") is not None
     ]
-    waypoint_summary = _waypoint_summary(bundle.manifest.controller_config, filter_rows, start_time_s)
+    waypoint_summary = _ground_truth_waypoint_summary(bundle.manifest.controller_config, camera_gt_rows, start_time_s)
 
     coverage_hits = [
         float(match["position_error_m"]) <= float(match["position_radius_95_m"])
         for match in position_matches
         if match.get("position_radius_95_m") is not None
     ]
+    frame_pack_rows = [
+        row
+        for row in bundle.raw["estimator_input"]
+        if str(row.get("kind", "")) == "frame_pack"
+    ]
+    anchor_visible_flags = [bool(row.get("anchor_visible", False)) for row in frame_pack_rows]
+    anchor_visible_fraction = (
+        None if not anchor_visible_flags else float(sum(anchor_visible_flags) / len(anchor_visible_flags))
+    )
+    anchor_innovation_norms = [
+        float(row.get("innovation_diagnostics", {}).get("last_innovation_norm", 0.0))
+        for row in filter_rows
+        if bool(row.get("anchor_visible", False))
+    ]
+    anchor_relocalization_count = max(
+        [0.0]
+        + [
+            float(row.get("innovation_diagnostics", {}).get("anchor_relocalizations", 0.0))
+            for row in filter_rows
+        ]
+    )
+    auxiliary_update_count = max(
+        [0.0]
+        + [
+            float(row.get("innovation_diagnostics", {}).get("auxiliary_update_count", 0.0))
+            for row in filter_rows
+        ]
+    )
+    auxiliary_rejection_count = max(
+        [0.0]
+        + [
+            float(row.get("innovation_diagnostics", {}).get("auxiliary_rejection_count", 0.0))
+            for row in filter_rows
+        ]
+    )
+    detections_by_frame: dict[int, list[dict[str, Any]]] = {}
+    for detection in bundle.raw["detections"]:
+        detections_by_frame.setdefault(int(detection.get("frame_index", -1)), []).append(detection)
+    anchor_pnp_success_frames = 0
+    fallback_only_frames = 0
+    for frame in bundle.raw["camera_frames"]:
+        frame_index = int(frame.get("frame_index", -1))
+        frame_detections = detections_by_frame.get(frame_index, [])
+        if any(
+            int(detection.get("tag_id", -1)) == int(bundle.manifest.anchor_tag_id)
+            and detection.get("pose_camera_tvec_m") is not None
+            and "fallback" not in str(detection.get("detector_backend", ""))
+            for detection in frame_detections
+        ):
+            anchor_pnp_success_frames += 1
+        if frame_detections and all(
+            detection.get("pose_camera_tvec_m") is None or "fallback" in str(detection.get("detector_backend", ""))
+            for detection in frame_detections
+        ):
+            fallback_only_frames += 1
+    total_frames = max(len(bundle.raw["camera_frames"]), 1)
+    controller_ik_failures = [
+        not str(row.get("ik_success", "")).lower() in {"true", "1"}
+        for row in controller_diagnostics_rows
+    ]
+    controller_failure_fraction = (
+        None if not controller_ik_failures else float(sum(controller_ik_failures) / len(controller_ik_failures))
+    )
+    safety_reason_counts: dict[str, int] = {}
+    for row in controller_diagnostics_rows:
+        reason = str(row.get("safety_reason", "") or "")
+        safety_reason_counts[reason] = safety_reason_counts.get(reason, 0) + 1
+    dominant_safety_reason = None if not safety_reason_counts else max(safety_reason_counts.items(), key=lambda item: item[1])[0]
+    current_position_source_counts: dict[str, int] = {}
+    for row in controller_diagnostics_rows:
+        source = str(row.get("current_position_source", "") or "")
+        current_position_source_counts[source] = current_position_source_counts.get(source, 0) + 1
     metrics = {
         "schema_version": 2,
         "run_dir": str(resolved),
@@ -333,12 +427,16 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
             "observed_auxiliary_tag_ids": auxiliary_tag_ids,
             "noise_preset": bundle.manifest.noise_presets.get("imu") or actuation_config.get("name"),
             "actuation_preset": bundle.manifest.noise_presets.get("actuation"),
+            "estimator_mode": bundle.manifest.estimator_mode,
+            "controller_mode": bundle.manifest.controller_mode,
+            "bootstrap_control_policy": bundle.manifest.bootstrap_control_policy,
         },
         "counts": {
             "camera_frames": len(bundle.raw["camera_frames"]),
             "detections": len(bundle.raw["detections"]),
             "imu_packets": len(bundle.raw["imu"]),
             "commands": len(bundle.raw["commands"]),
+            "controller_diagnostics": len(bundle.raw["controller_diagnostics"]),
             "realized_joints": len(bundle.raw["realized_joints"]),
             "filter_states": len(bundle.estimates["filter_state"]),
             "smoother_states": len(bundle.estimates["smoother_state"]),
@@ -356,6 +454,15 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
             "mean_position_radius_95_m": None if not position_radii else float(np.mean(position_radii)),
             "max_position_radius_95_m": None if not position_radii else float(np.max(position_radii)),
             "mean_innovation_norm": None if not innovation_norms else float(np.mean(innovation_norms)),
+            "anchor_visible_fraction": anchor_visible_fraction,
+            "anchor_relocalization_count": float(anchor_relocalization_count),
+            "mean_anchor_innovation_norm": None
+            if not anchor_innovation_norms
+            else float(np.mean(anchor_innovation_norms)),
+            "auxiliary_update_count": float(auxiliary_update_count),
+            "auxiliary_rejection_count": float(auxiliary_rejection_count),
+            "anchor_pnp_success_fraction": float(anchor_pnp_success_frames / total_frames),
+            "fallback_only_frame_fraction": float(fallback_only_frames / total_frames),
         },
         "trajectory": {
             "mean_position_error_m": None if not position_errors else float(np.mean(position_errors)),
@@ -391,6 +498,9 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
             "mean_completion_time_s": waypoint_summary["mean_completion_time_s"],
             "failure_rate_percent": waypoint_summary["failure_rate_percent"],
             "mean_actuator_tracking_error": _actuator_tracking_error(command_rows, bundle.raw["realized_joints"]),
+            "ik_failure_fraction": controller_failure_fraction,
+            "dominant_safety_reason": dominant_safety_reason,
+            "state_source_counts": current_position_source_counts,
         },
         "ground_truth_available": {
             "camera_gt": bool(bundle.gt and bundle.gt.get("camera_gt")),

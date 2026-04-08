@@ -55,6 +55,9 @@ def _manifest_from_summary(payload: dict[str, Any]) -> IsaacRunManifest:
         stage_usd_path=str(payload["stage_usd_path"]),
         robot_preset=str(payload["robot_preset"]),
         anchor_tag_id=int(payload["anchor_tag_id"]),
+        estimator_mode=str(payload.get("estimator_mode", "fused")),
+        controller_mode=str(payload.get("controller_mode", "closed-loop")),
+        bootstrap_control_policy=str(payload.get("bootstrap_control_policy", "hold_until_first_detection")),
         noise_presets={str(key): str(value) for key, value in dict(payload["noise_presets"]).items()},
         random_seed=int(payload["random_seed"]),
         controller_config=dict(payload["controller_config"]),
@@ -78,6 +81,7 @@ def load_estimator_input_bundle(run_dir: str | Path) -> IsaacReplayBundle:
         "estimator_input": _load_jsonl(resolved / "raw" / "estimator_input.jsonl"),
         "imu": _load_csv(resolved / "raw" / "imu.csv"),
         "commands": _load_csv(resolved / "raw" / "commands.csv"),
+        "controller_diagnostics": _load_csv(resolved / "raw" / "controller_diagnostics.csv"),
         "realized_joints": _load_csv(resolved / "raw" / "realized_joints.csv"),
     }
     estimates = {

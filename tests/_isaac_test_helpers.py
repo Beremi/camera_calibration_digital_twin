@@ -10,6 +10,7 @@ from calib_sim.isaac.estimation.state_defs import FilterStateSnapshot, SmootherS
 from calib_sim.isaac.logging.run_manifest import build_run_manifest
 from calib_sim.isaac.logging.schemas import (
     IsaacCameraFramePacket,
+    IsaacControllerDiagnosticPacket,
     IsaacImuPacket,
     IsaacJointCommandPacket,
     IsaacRealizedJointPacket,
@@ -29,6 +30,9 @@ def make_minimal_isaac_run(tmp_path: Path) -> Path:
         stage_usd_path="assets/isaac/anchor_room.usd",
         robot_preset="ur5e_phone_head",
         anchor_tag_id=0,
+        estimator_mode="fused",
+        controller_mode="closed-loop",
+        bootstrap_control_policy="hold_until_first_detection",
         noise_presets={"imu": "phone_nominal", "actuation": "servo_nominal"},
         random_seed=7,
         controller_config={"name": "path_tracking"},
@@ -111,10 +115,32 @@ def make_minimal_isaac_run(tmp_path: Path) -> Path:
             joint_names=("joint0",),
             desired_positions=(0.2,),
             effective_positions=(0.19,),
-            controller_mode="closed_loop",
+            estimator_mode="fused",
+            controller_mode="closed-loop",
             waypoint_index=0,
             safety_reason="nominal",
             tracking_error_world_m=(0.0, 0.0, 0.0),
+            dropped_command=False,
+        )
+    )
+    writer.append_controller_diagnostic(
+        IsaacControllerDiagnosticPacket(
+            timestamp_s=0.10,
+            sim_time_s=0.10,
+            estimator_mode="fused",
+            controller_mode="closed-loop",
+            waypoint_index=0,
+            current_position_source="estimate",
+            tracking_error_norm_m=0.0,
+            command_delta_norm_m=0.01,
+            desired_position_world_m=(0.0, 0.0, 0.0),
+            safety_reason="nominal",
+            position_radius_95_m=0.01,
+            innovation_norm=0.0,
+            ik_success=True,
+            ik_retry_alpha=1.0,
+            joint_target_delta_norm=0.01,
+            min_joint_limit_margin=0.5,
             dropped_command=False,
         )
     )

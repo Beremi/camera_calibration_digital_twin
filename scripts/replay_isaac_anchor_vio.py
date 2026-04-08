@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay one Isaac run and regenerate report artifacts."""
+"""Replay one Isaac run for analysis/report regeneration only."""
 
 from __future__ import annotations
 
@@ -11,7 +11,12 @@ from calib_sim.reporting import generate_isaac_report_artifacts
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=(
+            "Regenerate analysis and report artifacts for an Isaac run. "
+            "This script does not re-solve the estimator from raw logs on the first-pass branch."
+        )
+    )
     parser.add_argument("run_dir")
     parser.add_argument(
         "--allow-incomplete",

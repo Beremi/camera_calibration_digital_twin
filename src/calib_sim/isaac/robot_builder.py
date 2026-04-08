@@ -64,6 +64,39 @@ class LiveRobotBinding:
     def get_joint_velocities(self) -> np.ndarray:
         return np.asarray(self.articulation.get_joint_velocities(), dtype=np.float64)
 
+    def joint_limit_margin(self, joint_positions: np.ndarray) -> float | None:
+        positions = np.asarray(joint_positions, dtype=np.float64).reshape(-1)
+        lower: np.ndarray | None = None
+        upper: np.ndarray | None = None
+        try:
+            if hasattr(self.articulation, "dof_properties"):
+                dof_properties = self.articulation.dof_properties
+                if isinstance(dof_properties, dict):
+                    if "lower" in dof_properties and "upper" in dof_properties:
+                        lower = np.asarray(dof_properties["lower"], dtype=np.float64).reshape(-1)
+                        upper = np.asarray(dof_properties["upper"], dtype=np.float64).reshape(-1)
+            if (lower is None or upper is None) and hasattr(self.articulation, "get_dof_limits"):
+                limits = np.asarray(self.articulation.get_dof_limits(), dtype=np.float64)
+                if limits.ndim == 2 and limits.shape[-1] == 2:
+                    lower = limits[:, 0].reshape(-1)
+                    upper = limits[:, 1].reshape(-1)
+            if (lower is None or upper is None) and hasattr(self.articulation, "get_joint_limits"):
+                limits = np.asarray(self.articulation.get_joint_limits(), dtype=np.float64)
+                if limits.ndim == 2 and limits.shape[-1] == 2:
+                    lower = limits[:, 0].reshape(-1)
+                    upper = limits[:, 1].reshape(-1)
+        except Exception:
+            lower = None
+            upper = None
+        if lower is None or upper is None:
+            return None
+        limit = min(len(positions), len(lower), len(upper))
+        if limit <= 0:
+            return None
+        lower_margin = positions[:limit] - lower[:limit]
+        upper_margin = upper[:limit] - positions[:limit]
+        return float(np.min(np.minimum(lower_margin, upper_margin)))
+
     def get_end_effector_pose(self) -> tuple[np.ndarray, np.ndarray]:
         position, orientation = self.end_effector_prim.get_world_pose()
         return np.asarray(position, dtype=np.float64), np.asarray(orientation, dtype=np.float64)

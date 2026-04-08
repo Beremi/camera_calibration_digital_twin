@@ -38,9 +38,11 @@ def test_report_generation_writes_metrics_tables_and_figures(tmp_path) -> None:
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     assert metrics["counts"]["camera_frames"] == 1
     assert metrics["counts"]["imu_packets"] == 2
+    assert metrics["counts"]["controller_diagnostics"] == 1
     assert payload["complete"] is False
     assert payload["latest_any_link"] is not None
     assert payload["latest_complete_link"] is None
+    assert (run_dir / "raw" / "controller_diagnostics.csv").exists()
     assert (run_dir / "analysis" / "run_description_table.csv").exists()
     assert (run_dir / "analysis" / "estimate_summary_table.csv").exists()
     assert (run_dir / "analysis" / "report_data" / "run_description_rows.tex").exists()

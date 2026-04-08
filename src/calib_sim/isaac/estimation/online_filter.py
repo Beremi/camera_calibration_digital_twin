@@ -31,16 +31,28 @@ def _camera_pose_from_detection(tag_detection: IsaacTagDetectionPacket, tag_pose
 class AnchoredOnlineFilter:
     state: MotionState
     covariance: np.ndarray
-    mode: str = "visual_inertial_anchor_plus_aux_tags"
+    estimator_mode: str = "fused"
+    use_imu_prediction: bool = True
+    use_auxiliary_tag_updates: bool = True
     last_timestamp_s: float = 0.0
     last_innovation_norm: float = 0.0
     rejected_updates_count: int = 0
     anchor_relocalizations: int = 0
+    anchor_update_count: int = 0
+    auxiliary_update_count: int = 0
+    auxiliary_rejection_count: int = 0
     last_anchor_position_world_m: np.ndarray | None = None
     last_anchor_timestamp_s: float | None = None
 
     @classmethod
-    def identity_initialized(cls, *, mode: str = "visual_inertial_anchor_plus_aux_tags") -> "AnchoredOnlineFilter":
+    def identity_initialized(cls, *, estimator_mode: str = "fused") -> "AnchoredOnlineFilter":
+        normalized_mode = str(estimator_mode).strip().lower()
+        if normalized_mode not in {"visual", "fused"}:
+            normalized_mode = {
+                "visual_anchor_only": "visual",
+                "visual_anchor_plus_aux_tags": "visual",
+                "visual_inertial_anchor_plus_aux_tags": "fused",
+            }.get(normalized_mode, "fused")
         return cls(
             state=MotionState(
                 rotation_wi=np.eye(3, dtype=np.float64),
@@ -50,12 +62,14 @@ class AnchoredOnlineFilter:
                 accel_bias_mps2=np.zeros(3, dtype=np.float64),
             ),
             covariance=np.eye(15, dtype=np.float64) * 1e-3,
-            mode=mode,
+            estimator_mode=normalized_mode,
+            use_imu_prediction=normalized_mode == "fused",
+            use_auxiliary_tag_updates=True,
             last_timestamp_s=0.0,
         )
 
     def predict(self, imu_packets: tuple[IsaacImuPacket, ...]) -> None:
-        if self.mode == "visual_anchor_only":
+        if not self.use_imu_prediction:
             if imu_packets:
                 self.last_timestamp_s = float(imu_packets[-1].timestamp_s)
             return
@@ -94,6 +108,7 @@ class AnchoredOnlineFilter:
         innovation_norm = float(np.linalg.norm(innovation))
         if innovation_norm > float(relocalization_threshold_m):
             self.anchor_relocalizations += 1
+        self.anchor_update_count += 1
         measured_velocity_world_mps = self.state.velocity_world_mps.copy()
         if self.last_anchor_position_world_m is not None and self.last_anchor_timestamp_s is not None:
             dt_s = float(tag_detection.timestamp_s) - float(self.last_anchor_timestamp_s)
@@ -141,7 +156,7 @@ class AnchoredOnlineFilter:
         mapped_tag_poses: dict[int, TagPoseSpec],
         trust: float = 0.15,
     ) -> None:
-        if self.mode == "visual_anchor_only":
+        if not self.use_auxiliary_tag_updates:
             return
         candidate_positions: list[np.ndarray] = []
         candidate_rotations: list[np.ndarray] = []
@@ -150,16 +165,19 @@ class AnchoredOnlineFilter:
                 continue
             if detection.pose_camera_rvec is None or detection.pose_camera_tvec_m is None:
                 self.rejected_updates_count += 1
+                self.auxiliary_rejection_count += 1
                 continue
             try:
                 position_world, rotation_wi = _camera_pose_from_detection(detection, mapped_tag_poses[int(detection.tag_id)])
             except ValueError:
                 self.rejected_updates_count += 1
+                self.auxiliary_rejection_count += 1
                 continue
             candidate_positions.append(position_world)
             candidate_rotations.append(rotation_wi)
         if not candidate_positions:
             return
+        self.auxiliary_update_count += len(candidate_positions)
         mean_position = np.mean(np.stack(candidate_positions, axis=0), axis=0)
         relative_position_delta_m = mean_position - self.state.position_world_m
         self.state.position_world_m = self.state.position_world_m + float(trust) * relative_position_delta_m
@@ -199,6 +217,9 @@ class AnchoredOnlineFilter:
                 "last_innovation_norm": float(self.last_innovation_norm),
                 "rejected_updates_count": float(self.rejected_updates_count),
                 "anchor_relocalizations": float(self.anchor_relocalizations),
+                "anchor_update_count": float(self.anchor_update_count),
+                "auxiliary_update_count": float(self.auxiliary_update_count),
+                "auxiliary_rejection_count": float(self.auxiliary_rejection_count),
             },
         )
 
@@ -212,11 +233,15 @@ class AnchoredOnlineFilter:
             gyro_bias_rps=self.state.gyro_bias_rps.copy(),
             accel_bias_mps2=self.state.accel_bias_mps2.copy(),
             covariance=self.covariance.copy(),
+            mode=self.estimator_mode,
             innovation_diagnostics={
                 "last_innovation_norm": float(self.last_innovation_norm),
                 "position_radius_95_m": float(radius_95_from_covariance(self.covariance[:3, :3])),
                 "rejected_updates_count": float(self.rejected_updates_count),
                 "anchor_relocalizations": float(self.anchor_relocalizations),
+                "anchor_update_count": float(self.anchor_update_count),
+                "auxiliary_update_count": float(self.auxiliary_update_count),
+                "auxiliary_rejection_count": float(self.auxiliary_rejection_count),
             },
         )
 

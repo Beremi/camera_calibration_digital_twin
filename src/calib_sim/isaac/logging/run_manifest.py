@@ -31,6 +31,9 @@ class IsaacRunManifest:
     stage_usd_path: str
     robot_preset: str
     anchor_tag_id: int
+    estimator_mode: str
+    controller_mode: str
+    bootstrap_control_policy: str
     noise_presets: dict[str, str]
     random_seed: int
     controller_config: dict[str, Any]
@@ -46,6 +49,9 @@ class IsaacRunManifest:
             "stage_usd_path": self.stage_usd_path,
             "robot_preset": self.robot_preset,
             "anchor_tag_id": int(self.anchor_tag_id),
+            "estimator_mode": self.estimator_mode,
+            "controller_mode": self.controller_mode,
+            "bootstrap_control_policy": self.bootstrap_control_policy,
             "noise_presets": dict(self.noise_presets),
             "random_seed": int(self.random_seed),
             "controller_config": dict(self.controller_config),
@@ -63,6 +69,9 @@ def build_run_manifest(
     stage_usd_path: str,
     robot_preset: str,
     anchor_tag_id: int,
+    estimator_mode: str,
+    controller_mode: str,
+    bootstrap_control_policy: str,
     noise_presets: dict[str, str],
     random_seed: int,
     controller_config: dict[str, Any],
@@ -77,6 +86,9 @@ def build_run_manifest(
         stage_usd_path=stage_usd_path,
         robot_preset=robot_preset,
         anchor_tag_id=int(anchor_tag_id),
+        estimator_mode=str(estimator_mode),
+        controller_mode=str(controller_mode),
+        bootstrap_control_policy=str(bootstrap_control_policy),
         noise_presets=dict(noise_presets),
         random_seed=int(random_seed),
         controller_config=dict(controller_config),

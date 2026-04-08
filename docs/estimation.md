@@ -5,7 +5,7 @@ This repo now has two estimation tracks:
 - `src/calib_sim/estimation/` for the browser/interactive batch-estimation checkpoints
 - `src/calib_sim/isaac/estimation/` for the first-pass live Isaac anchored visual-inertial runtime
 
-The browser batch path remains the preserved scientific baseline for Checkpoint 02/03. The Isaac path now has a real first-pass runtime and artifact bundle under `output/isaac_runs/latest_complete`, but it should still be read as a first complete pass rather than a tuned final estimator.
+The browser batch path remains the preserved scientific baseline for Checkpoint 02/03. The Isaac path now has a real first-pass runtime, a suite-driven publication bundle under `output/isaac_runs/latest_first_pass_suite`, and per-run artifact bundles under `output/isaac_runs/latest_complete`, but it should still be read as a first complete pass rather than a final estimator stack.
 
 ## Scope
 
@@ -33,11 +33,11 @@ The Isaac runtime uses a separate first-pass online estimation/control stack:
 - fixed-lag smoother under `src/calib_sim/isaac/estimation/fixed_lag_smoother.py`
 - raw / GT / estimate / uncertainty logging under `src/calib_sim/isaac/logging/`
 
-As of April 8, 2026, the current local headline Isaac run is:
+As of April 8, 2026, the publication report prefers:
 
-- `output/isaac_runs/first_real_pass_nominal_v2`
+- `output/isaac_runs/latest_first_pass_suite/analysis/report_data/`
 
-The publication report consumes:
+and falls back to:
 
 - `output/isaac_runs/latest_complete/analysis/report_data/`
 
@@ -46,6 +46,14 @@ The Isaac no-GT rule is the same as the batch path:
 - inference reads only `raw/` plus config snapshots
 - GT stays under `gt/`
 - replay/inference must not read `gt/`
+
+The first-pass mode split is now explicit in config, logs, and reporting:
+
+- `estimator_mode = visual` means anchor-plus-auxiliary visual updates with IMU prediction disabled
+- `estimator_mode = fused` means anchor-plus-auxiliary visual updates with IMU prediction enabled
+- `controller_mode = open-loop` means control does not use estimated state as its control state
+- `controller_mode = closed-loop` means control uses the estimate after first detection
+- `bootstrap_control_policy = hold_until_first_detection` is the publication-valid default
 
 ## Package Layout
 
@@ -169,6 +177,7 @@ Current realism note:
 - new async runs generate IMU truth at the IMU frame rather than the camera frame
 - the motion truth is still interpolated from frame-step endpoints rather than a separate full physics integrator
 - the current fused IMU factor is a simplified discrete-time interval factor, not a full inertial preintegration model with lever-arm and higher-order covariance propagation
+- `scripts/replay_isaac_anchor_vio.py` is still analysis/report regeneration only on this branch and does not re-solve the estimator from raw Isaac logs
 
 ## Current Checkpoints
 

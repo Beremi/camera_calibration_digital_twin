@@ -17,3 +17,11 @@ class FrameMeasurementPack:
     @property
     def anchor_detections(self) -> tuple[IsaacTagDetectionPacket, ...]:
         return tuple(detection for detection in self.detections if detection.is_anchor)
+
+    @property
+    def anchor_pose_detections(self) -> tuple[IsaacTagDetectionPacket, ...]:
+        return tuple(
+            detection
+            for detection in self.anchor_detections
+            if detection.pose_camera_rvec is not None and detection.pose_camera_tvec_m is not None
+        )

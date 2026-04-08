@@ -157,6 +157,7 @@ class IsaacJointCommandPacket:
     joint_names: tuple[str, ...]
     desired_positions: tuple[float, ...]
     effective_positions: tuple[float, ...]
+    estimator_mode: str
     controller_mode: str
     waypoint_index: int
     safety_reason: str
@@ -171,6 +172,7 @@ class IsaacJointCommandPacket:
             "joint_names",
             "desired_positions",
             "effective_positions",
+            "estimator_mode",
             "controller_mode",
             "waypoint_index",
             "safety_reason",
@@ -185,11 +187,82 @@ class IsaacJointCommandPacket:
             "joint_names": _pipe_join(self.joint_names),
             "desired_positions": _pipe_join(self.desired_positions),
             "effective_positions": _pipe_join(self.effective_positions),
+            "estimator_mode": self.estimator_mode,
             "controller_mode": self.controller_mode,
             "waypoint_index": int(self.waypoint_index),
             "safety_reason": self.safety_reason,
             "tracking_error_world_m": _pipe_join(self.tracking_error_world_m),
             "dropped_command": bool(self.dropped_command),
+        }
+
+
+@dataclass(slots=True)
+class IsaacControllerDiagnosticPacket:
+    timestamp_s: float
+    sim_time_s: float
+    estimator_mode: str
+    controller_mode: str
+    waypoint_index: int
+    current_position_source: str
+    tracking_error_norm_m: float
+    command_delta_norm_m: float
+    desired_position_world_m: tuple[float, float, float]
+    safety_reason: str
+    position_radius_95_m: float
+    innovation_norm: float
+    ik_success: bool
+    ik_retry_alpha: float
+    joint_target_delta_norm: float
+    min_joint_limit_margin: float | None = None
+    dropped_command: bool = False
+    degraded_mode_active: bool = False
+    orientation_policy: str = "fixed"
+
+    @classmethod
+    def csv_fieldnames(cls) -> list[str]:
+        return [
+            "timestamp_s",
+            "sim_time_s",
+            "estimator_mode",
+            "controller_mode",
+            "waypoint_index",
+            "current_position_source",
+            "tracking_error_norm_m",
+            "command_delta_norm_m",
+            "desired_position_world_m",
+            "safety_reason",
+            "position_radius_95_m",
+            "innovation_norm",
+            "ik_success",
+            "ik_retry_alpha",
+            "joint_target_delta_norm",
+            "min_joint_limit_margin",
+            "dropped_command",
+            "degraded_mode_active",
+            "orientation_policy",
+        ]
+
+    def to_csv_row(self) -> dict[str, Any]:
+        return {
+            "timestamp_s": float(self.timestamp_s),
+            "sim_time_s": float(self.sim_time_s),
+            "estimator_mode": self.estimator_mode,
+            "controller_mode": self.controller_mode,
+            "waypoint_index": int(self.waypoint_index),
+            "current_position_source": self.current_position_source,
+            "tracking_error_norm_m": float(self.tracking_error_norm_m),
+            "command_delta_norm_m": float(self.command_delta_norm_m),
+            "desired_position_world_m": _pipe_join(self.desired_position_world_m),
+            "safety_reason": self.safety_reason,
+            "position_radius_95_m": float(self.position_radius_95_m),
+            "innovation_norm": float(self.innovation_norm),
+            "ik_success": bool(self.ik_success),
+            "ik_retry_alpha": float(self.ik_retry_alpha),
+            "joint_target_delta_norm": float(self.joint_target_delta_norm),
+            "min_joint_limit_margin": None if self.min_joint_limit_margin is None else float(self.min_joint_limit_margin),
+            "dropped_command": bool(self.dropped_command),
+            "degraded_mode_active": bool(self.degraded_mode_active),
+            "orientation_policy": self.orientation_policy,
         }
 
 
@@ -238,6 +311,7 @@ class IsaacRealizedJointPacket:
 
 __all__ = [
     "IsaacCameraFramePacket",
+    "IsaacControllerDiagnosticPacket",
     "IsaacImuPacket",
     "IsaacJointCommandPacket",
     "IsaacRealizedJointPacket",

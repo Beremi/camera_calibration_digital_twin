@@ -250,6 +250,13 @@ class IsaacCameraBinding:
             camera_axes="world",
         )
 
+    def get_world_pose(self) -> tuple[np.ndarray, np.ndarray]:
+        position_world_m, orientation_wxyz = self.camera.get_world_pose()
+        return (
+            np.asarray(position_world_m, dtype=np.float64).reshape(3),
+            np.asarray(orientation_wxyz, dtype=np.float64).reshape(4),
+        )
+
     def is_due(self, sim_time_s: float) -> bool:
         return self.clock.next_time_s <= float(sim_time_s) + 1e-12
 

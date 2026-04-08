@@ -18,7 +18,12 @@ from calib_sim.isaac.control.waypoint_manager import Waypoint, WaypointManager
 from calib_sim.isaac.estimation.fixed_lag_smoother import FixedLagSmoother
 from calib_sim.isaac.estimation.online_filter import AnchoredOnlineFilter
 from calib_sim.isaac.frontend.apriltag_frontend import IsaacAprilTagFrontend
-from calib_sim.isaac.logging.schemas import IsaacCameraFramePacket, IsaacJointCommandPacket, IsaacRealizedJointPacket
+from calib_sim.isaac.logging.schemas import (
+    IsaacCameraFramePacket,
+    IsaacControllerDiagnosticPacket,
+    IsaacJointCommandPacket,
+    IsaacRealizedJointPacket,
+)
 from calib_sim.isaac.logging.writer import IsaacRunWriter
 from calib_sim.isaac.robot_builder import LiveRobotBinding, build_robot_binding
 from calib_sim.isaac.sensors import IsaacCameraBinding, IsaacImuBinding, camera_spec_from_config, imu_spec_from_config
@@ -140,7 +145,10 @@ class IsaacRuntimeConfig:
     seed: int = 7
     duration_s: float = 10.0
     max_steps: int | None = None
-    mode: str = "closed-loop"
+    estimator_mode: str = "fused"
+    controller_mode: str = "closed-loop"
+    bootstrap_control_policy: str = "hold_until_first_detection"
+    mode: str | None = None
     promote_latest_complete: bool = False
     allow_gt_debug_control: bool = False
     config_paths: dict[str, str] = field(default_factory=dict)
@@ -163,6 +171,9 @@ class IsaacRuntimeConfig:
             "seed": int(self.seed),
             "duration_s": float(self.duration_s),
             "max_steps": None if self.max_steps is None else int(self.max_steps),
+            "estimator_mode": self.estimator_mode,
+            "controller_mode": self.controller_mode,
+            "bootstrap_control_policy": self.bootstrap_control_policy,
             "mode": self.mode,
             "promote_latest_complete": bool(self.promote_latest_complete),
             "allow_gt_debug_control": bool(self.allow_gt_debug_control),
@@ -184,6 +195,7 @@ class IsaacStandaloneRuntime:
             "detections": 0,
             "imu_packets": 0,
             "commands": 0,
+            "controller_diagnostics": 0,
             "realized_joints": 0,
             "filter_states": 0,
             "smoother_states": 0,
@@ -217,6 +229,7 @@ class IsaacStandaloneRuntime:
         self._stage_from_file_loaded = False
         self._previous_joint_positions: np.ndarray | None = None
         self._ik_failure_count = 0
+        self._controller_consecutive_ik_failures = 0
         self._finalized_summary: IsaacRunSummary | None = None
 
     @property
@@ -296,14 +309,8 @@ class IsaacStandaloneRuntime:
         estimation_config = self.config.config_payloads["estimation"]
         control_config = self.config.config_payloads["control"]
         actuation_config = self.config.config_payloads["actuation"]
-        filter_mode = {
-            "visual": "visual_anchor_plus_aux_tags",
-            "fused": "visual_inertial_anchor_plus_aux_tags",
-            "closed-loop": "visual_inertial_anchor_plus_aux_tags",
-            "open-loop": "visual_inertial_anchor_plus_aux_tags",
-        }.get(self.config.mode, "visual_inertial_anchor_plus_aux_tags")
         self._frontend = IsaacAprilTagFrontend(anchor_tag_id=int(self.config.anchor_tag_id))
-        self._filter = AnchoredOnlineFilter.identity_initialized(mode=filter_mode)
+        self._filter = AnchoredOnlineFilter.identity_initialized(estimator_mode=self.config.estimator_mode)
         self._smoother = FixedLagSmoother(lag_size=int(estimation_config.get("smoother", {}).get("lag_size", 30)))
         waypoints = tuple(
             Waypoint(
@@ -367,7 +374,9 @@ class IsaacStandaloneRuntime:
         for _ in range(10):
             self._world.step(render=True)
         self._control_target_orientation_wxyz = ee_orientation_wxyz.copy()
-        self._last_open_loop_target_position = ee_position_world_m.copy()
+        self._last_open_loop_target_position = self._current_control_position_world_m(
+            ee_position_world_m=np.asarray(ee_position_world_m, dtype=np.float64).reshape(3)
+        )
         self._write_tag_ground_truth()
 
     def _calibrate_camera_mount_once(self, ee_position_world_m: np.ndarray) -> None:
@@ -561,12 +570,16 @@ class IsaacStandaloneRuntime:
             self._last_detections = pack.detections
             self._last_anchor_visible = bool(pack.metadata.get("anchor_visible", False))
             anchor_detections = pack.anchor_detections
-            if anchor_detections:
+            anchor_pose_detections = pack.anchor_pose_detections
+            if anchor_pose_detections:
+                anchor_detection = max(anchor_pose_detections, key=lambda detection: float(detection.score))
                 self._filter.update_anchor(
-                    tag_detection=anchor_detections[0],
-                    tag_pose=self._tag_pose_map[int(anchor_detections[0].tag_id)],
+                    tag_detection=anchor_detection,
+                    tag_pose=self._tag_pose_map[int(anchor_detection.tag_id)],
                     measurement_std_m=float(self.config.config_payloads["estimation"].get("filter", {}).get("anchor_measurement_std_m", 0.01)),
                 )
+            elif anchor_detections:
+                self._filter.rejected_updates_count += len(anchor_detections)
             auxiliary_detections = tuple(detection for detection in pack.detections if not detection.is_anchor)
             if auxiliary_detections:
                 self._filter.update_aux_tags(
@@ -581,7 +594,7 @@ class IsaacStandaloneRuntime:
         for _ in self._filter_clock.advance_to(self._sim_time_s):
             snapshot = self._filter.export_snapshot(sim_time_s=self._sim_time_s)
             snapshot.anchor_visible = bool(self._last_anchor_visible)
-            snapshot.mode = self._filter.mode
+            snapshot.mode = self._filter.estimator_mode
             self._writer.write_filter_state(snapshot)
             self._counts["filter_states"] += 1
             self._latest_filter_snapshot = snapshot
@@ -603,53 +616,203 @@ class IsaacStandaloneRuntime:
             smoother_snapshot = self._smoother.solve()
             self._writer.write_smoother_state(smoother_snapshot)
             self._counts["smoother_states"] += 1
-            for tag_id, pose in self._smoother.active_tag_pose_specs().items():
+            for tag_id, pose in self._smoother.active_tag_pose_specs(min_observation_count=5).items():
                 if int(tag_id) == int(self.config.anchor_tag_id):
                     continue
                 self._tag_pose_map[int(tag_id)] = pose
 
-    def _apply_control(self, ee_position_world_m: np.ndarray) -> None:
+    def _control_config(self) -> dict[str, Any]:
+        return self.config.config_payloads["control"]
+
+    def _workspace_bounds(self, key: str) -> tuple[np.ndarray, np.ndarray] | None:
+        workspace = self._control_config().get(key)
+        if not isinstance(workspace, dict):
+            return None
+        lower = workspace.get("min")
+        upper = workspace.get("max")
+        if not isinstance(lower, (list, tuple)) or not isinstance(upper, (list, tuple)):
+            return None
+        if len(lower) < 3 or len(upper) < 3:
+            return None
+        return (
+            np.asarray([float(lower[0]), float(lower[1]), float(lower[2])], dtype=np.float64),
+            np.asarray([float(upper[0]), float(upper[1]), float(upper[2])], dtype=np.float64),
+        )
+
+    def _control_workspace_bounds(self) -> tuple[np.ndarray, np.ndarray] | None:
+        return self._workspace_bounds("workspace_aabb_world_m")
+
+    def _ik_workspace_bounds(self) -> tuple[np.ndarray, np.ndarray] | None:
+        return self._workspace_bounds("ik_workspace_aabb_world_m")
+
+    def _clamp_to_workspace(self, position_world_m: np.ndarray) -> np.ndarray:
+        candidate = np.asarray(position_world_m, dtype=np.float64).reshape(3)
+        bounds = self._control_workspace_bounds()
+        if bounds is None:
+            return candidate
+        lower, upper = bounds
+        return np.clip(candidate, lower, upper)
+
+    def _clamp_ik_target(self, position_world_m: np.ndarray) -> np.ndarray:
+        candidate = np.asarray(position_world_m, dtype=np.float64).reshape(3)
+        bounds = self._ik_workspace_bounds()
+        if bounds is None:
+            return candidate
+        lower, upper = bounds
+        return np.clip(candidate, lower, upper)
+
+    def _limit_step_delta(self, delta_world_m: np.ndarray) -> np.ndarray:
+        candidate = np.asarray(delta_world_m, dtype=np.float64).reshape(3)
+        max_step_m = float(self._control_config().get("max_position_step_m", 0.02))
+        norm = float(np.linalg.norm(candidate))
+        if norm <= max_step_m or norm < 1e-12:
+            return candidate
+        return candidate * (max_step_m / norm)
+
+    def _control_target_to_ik_target(
+        self,
+        *,
+        current_control_position_world_m: np.ndarray,
+        desired_control_position_world_m: np.ndarray,
+        current_ee_position_world_m: np.ndarray,
+    ) -> np.ndarray:
+        control_position = np.asarray(current_control_position_world_m, dtype=np.float64).reshape(3)
+        desired_control_position = np.asarray(desired_control_position_world_m, dtype=np.float64).reshape(3)
+        current_ee_position = np.asarray(current_ee_position_world_m, dtype=np.float64).reshape(3)
+        control_delta_world_m = desired_control_position - control_position
+        return current_ee_position + control_delta_world_m
+
+    def _current_control_position_world_m(self, *, ee_position_world_m: np.ndarray) -> np.ndarray:
+        if self._camera_binding is not None:
+            try:
+                position_world_m, _ = self._camera_binding.get_world_pose()
+                return np.asarray(position_world_m, dtype=np.float64).reshape(3)
+            except Exception:
+                pass
+        return np.asarray(ee_position_world_m, dtype=np.float64).reshape(3)
+
+    def _resolve_control_state(
+        self,
+        *,
+        ee_position_world_m: np.ndarray,
+    ) -> tuple[np.ndarray | None, str, bool]:
+        current_control_position = self._current_control_position_world_m(ee_position_world_m=ee_position_world_m)
+        if self.config.controller_mode == "open-loop":
+            if self._last_open_loop_target_position is None:
+                self._last_open_loop_target_position = current_control_position.copy()
+            return self._last_open_loop_target_position.copy(), "open_loop_memory", False
+        if self._counts["detections"] == 0:
+            if self.config.allow_gt_debug_control or self.config.bootstrap_control_policy == "gt_until_first_detection":
+                return current_control_position, "gt_debug", False
+            return None, "bootstrap_hold", True
+        if self.config.allow_gt_debug_control:
+            return current_control_position, "gt_debug", False
+        if self._latest_filter_snapshot is not None and self._filter is not None:
+            return self._filter.state.position_world_m.copy(), "estimate", False
+        return None, "bootstrap_hold", True
+
+    def _solve_control_ik(
+        self,
+        *,
+        current_position_world_m: np.ndarray,
+        current_joint_positions: np.ndarray,
+        desired_position_world_m: np.ndarray,
+        current_orientation_wxyz: np.ndarray,
+    ) -> tuple[np.ndarray, bool, float, str, np.ndarray]:
+        if self._robot_binding is None:
+            raise RuntimeError("Robot binding missing.")
+        alphas = self._control_config().get("ik_retry_alphas", [1.0, 0.5, 0.25, 0.1, 0.0])
+        fixed_orientation = (
+            self._control_target_orientation_wxyz.copy()
+            if self._control_target_orientation_wxyz is not None
+            else np.asarray(current_orientation_wxyz, dtype=np.float64).reshape(4)
+        )
+        orientation_candidates = [("fixed", fixed_orientation)]
+        relaxed_orientation = np.asarray(current_orientation_wxyz, dtype=np.float64).reshape(4)
+        if not np.allclose(relaxed_orientation, fixed_orientation):
+            orientation_candidates.append(("relaxed_current", relaxed_orientation))
+        desired_position = np.asarray(desired_position_world_m, dtype=np.float64).reshape(3)
+        current_position = np.asarray(current_position_world_m, dtype=np.float64).reshape(3)
+        delta = desired_position - current_position
+        for orientation_policy, orientation in orientation_candidates:
+            for alpha in alphas:
+                candidate_position = self._clamp_ik_target(current_position + float(alpha) * delta)
+                joint_targets, success = self._robot_binding.compute_joint_targets_from_pose(
+                    target_position_world_m=candidate_position,
+                    target_orientation_wxyz=orientation,
+                )
+                if success:
+                    return joint_targets, True, float(alpha), orientation_policy, candidate_position
+        return current_joint_positions.copy(), False, 0.0, orientation_candidates[-1][0], current_position.copy()
+
+    def _apply_control(self, ee_position_world_m: np.ndarray, ee_orientation_wxyz: np.ndarray) -> None:
         if self._tracker is None or self._controller_clock is None or self._robot_binding is None:
             return
         from isaacsim.core.utils.types import ArticulationAction
 
         for _ in self._controller_clock.advance_to(self._sim_time_s):
-            if self.config.mode == "open-loop":
-                if self._last_open_loop_target_position is None:
-                    self._last_open_loop_target_position = ee_position_world_m.copy()
-                current_position = self._last_open_loop_target_position
-            elif self._counts["detections"] == 0:
-                current_position = ee_position_world_m.copy()
-            elif self.config.allow_gt_debug_control:
-                current_position = ee_position_world_m
-            elif self._filter is not None and self._latest_filter_snapshot is not None:
-                current_position = self._filter.state.position_world_m.copy()
-            else:
-                current_position = ee_position_world_m.copy()
+            current_position, current_position_source, hold_for_bootstrap = self._resolve_control_state(
+                ee_position_world_m=ee_position_world_m
+            )
+            current_joint_positions = self._robot_binding.get_joint_positions()
             position_radius_95_m = 0.05 if self._latest_uncertainty is None else float(self._latest_uncertainty.position_radius_95_m)
             innovation_norm = 0.0 if self._filter is None else float(self._filter.last_innovation_norm)
-            if self.config.mode != "open-loop" and self._counts["detections"] == 0:
-                position_radius_95_m = max(
-                    position_radius_95_m,
-                    float(self._tracker.safety_gates.max_position_radius_95_m) + 1.0,
+            degraded_after = int(self._control_config().get("degrade_after_consecutive_ik_failures", 5))
+            degraded_gain_scale = float(self._control_config().get("degraded_gain_scale", 0.5))
+            degraded_mode_active = self._controller_consecutive_ik_failures >= degraded_after
+            if hold_for_bootstrap or current_position is None:
+                tracked_target_position = self._current_control_position_world_m(
+                    ee_position_world_m=np.asarray(ee_position_world_m, dtype=np.float64).reshape(3)
                 )
-            path_command = self._tracker.compute_control(
-                current_position_world_m=current_position,
-                position_radius_95_m=position_radius_95_m,
-                innovation_norm=innovation_norm,
-                anchor_visible=bool(self._last_anchor_visible or self.config.mode == "open-loop"),
-            )
-            desired_position = current_position + np.asarray(path_command.command_delta_world_m, dtype=np.float64)
-            joint_targets, ik_success = self._robot_binding.compute_joint_targets_from_pose(
-                target_position_world_m=desired_position,
-                target_orientation_wxyz=self._control_target_orientation_wxyz
-                if self._control_target_orientation_wxyz is not None
-                else np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
-            )
-            if not ik_success:
-                self._ik_failure_count += 1
-                joint_targets = self._robot_binding.get_joint_positions()
-            current_joint_positions = self._robot_binding.get_joint_positions()
+                ik_target_position = tracked_target_position.copy()
+                path_command = None
+                joint_targets = current_joint_positions.copy()
+                ik_success = True
+                ik_retry_alpha = 0.0
+                orientation_policy = "hold"
+                joint_target_delta_norm = 0.0
+                min_joint_limit_margin = self._robot_binding.joint_limit_margin(joint_targets)
+                command_delta_norm_m = 0.0
+                tracking_error_norm_m = 0.0
+                safety_reason = "bootstrap_hold"
+            else:
+                current_position = np.asarray(current_position, dtype=np.float64).reshape(3)
+                path_command = self._tracker.compute_control(
+                    current_position_world_m=current_position,
+                    position_radius_95_m=position_radius_95_m,
+                    innovation_norm=innovation_norm,
+                    anchor_visible=bool(self._last_anchor_visible or self.config.controller_mode == "open-loop"),
+                )
+                command_delta = np.asarray(path_command.command_delta_world_m, dtype=np.float64)
+                if degraded_mode_active:
+                    command_delta = command_delta * degraded_gain_scale
+                command_delta = self._limit_step_delta(command_delta)
+                tracked_target_position = self._clamp_to_workspace(current_position + command_delta)
+                ik_target_position = self._control_target_to_ik_target(
+                    current_control_position_world_m=current_position,
+                    desired_control_position_world_m=tracked_target_position,
+                    current_ee_position_world_m=ee_position_world_m,
+                )
+                joint_targets, ik_success, ik_retry_alpha, orientation_policy, ik_target_position = self._solve_control_ik(
+                    current_position_world_m=np.asarray(ee_position_world_m, dtype=np.float64).reshape(3),
+                    current_joint_positions=current_joint_positions,
+                    desired_position_world_m=ik_target_position,
+                    current_orientation_wxyz=ee_orientation_wxyz,
+                )
+                if not ik_success:
+                    self._ik_failure_count += 1
+                    self._controller_consecutive_ik_failures += 1
+                    joint_targets = current_joint_positions.copy()
+                    tracked_target_position = current_position.copy()
+                    ik_target_position = np.asarray(ee_position_world_m, dtype=np.float64).reshape(3)
+                    safety_reason = "ik_hold"
+                else:
+                    self._controller_consecutive_ik_failures = 0
+                    safety_reason = path_command.safety_reason if not degraded_mode_active else "ik_degraded"
+                joint_target_delta_norm = float(np.linalg.norm(joint_targets - current_joint_positions))
+                min_joint_limit_margin = self._robot_binding.joint_limit_margin(joint_targets)
+                command_delta_norm_m = float(np.linalg.norm(command_delta))
+                tracking_error_norm_m = float(np.linalg.norm(np.asarray(path_command.tracking_error_world_m, dtype=np.float64)))
             effective_positions: list[float] = []
             servo_state: dict[str, Any] = {}
             dropped_command = False
@@ -677,15 +840,42 @@ class IsaacStandaloneRuntime:
                     joint_names=self._robot_binding.robot.joint_names,
                     desired_positions=tuple(float(value) for value in joint_targets[: len(self._robot_binding.robot.joint_names)].tolist()),
                     effective_positions=tuple(float(value) for value in effective_positions),
-                    controller_mode=self.config.mode,
-                    waypoint_index=int(path_command.waypoint_index),
-                    safety_reason=path_command.safety_reason,
-                    tracking_error_world_m=tuple(float(value) for value in path_command.tracking_error_world_m),
+                    estimator_mode=self.config.estimator_mode,
+                    controller_mode=self.config.controller_mode,
+                    waypoint_index=int(self._tracker.waypoint_manager.current_index),
+                    safety_reason=safety_reason,
+                    tracking_error_world_m=(0.0, 0.0, 0.0)
+                    if path_command is None
+                    else tuple(float(value) for value in path_command.tracking_error_world_m),
                     dropped_command=bool(dropped_command),
                 )
             )
+            self._writer.write_controller_diagnostic(
+                IsaacControllerDiagnosticPacket(
+                    timestamp_s=float(self._sim_time_s),
+                    sim_time_s=float(self._sim_time_s),
+                    estimator_mode=self.config.estimator_mode,
+                    controller_mode=self.config.controller_mode,
+                    waypoint_index=int(self._tracker.waypoint_manager.current_index),
+                    current_position_source=current_position_source,
+                    tracking_error_norm_m=float(tracking_error_norm_m),
+                    command_delta_norm_m=float(command_delta_norm_m),
+                    desired_position_world_m=tuple(float(value) for value in tracked_target_position.tolist()),
+                    safety_reason=safety_reason,
+                    position_radius_95_m=float(position_radius_95_m),
+                    innovation_norm=float(innovation_norm),
+                    ik_success=bool(ik_success),
+                    ik_retry_alpha=float(ik_retry_alpha),
+                    joint_target_delta_norm=float(joint_target_delta_norm),
+                    min_joint_limit_margin=min_joint_limit_margin,
+                    dropped_command=bool(dropped_command),
+                    degraded_mode_active=bool(degraded_mode_active),
+                    orientation_policy=orientation_policy,
+                )
+            )
             self._counts["commands"] += 1
-            self._last_open_loop_target_position = desired_position.copy()
+            self._counts["controller_diagnostics"] += 1
+            self._last_open_loop_target_position = tracked_target_position.copy()
 
     def _step_once(self) -> None:
         if self._world is None:
@@ -705,7 +895,7 @@ class IsaacStandaloneRuntime:
         self._process_camera(timestamps)
         self._log_filter_and_uncertainty()
         self._log_smoother()
-        self._apply_control(ee_position_world_m)
+        self._apply_control(ee_position_world_m, ee_orientation_wxyz)
 
     def step(self, steps: int = 1) -> None:
         if not self.started:
@@ -731,7 +921,18 @@ class IsaacStandaloneRuntime:
         return summary
 
     def summary(self) -> IsaacRunSummary:
-        complete = all(self._counts[key] > 0 for key in ("camera_frames", "imu_packets", "commands", "filter_states", "smoother_states", "uncertainty_states"))
+        complete = all(
+            self._counts[key] > 0
+            for key in (
+                "camera_frames",
+                "imu_packets",
+                "commands",
+                "controller_diagnostics",
+                "filter_states",
+                "smoother_states",
+                "uncertainty_states",
+            )
+        )
         warnings = list(dict.fromkeys(self._warnings))
         if self._ik_failure_count > 0:
             warnings.append(

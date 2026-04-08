@@ -7,6 +7,7 @@ import numpy as np
 from calib_sim.isaac.estimation.fixed_lag_smoother import FixedLagSmoother
 from calib_sim.isaac.estimation.state_defs import FilterStateSnapshot
 from calib_sim.isaac.estimation.uncertainty import is_positive_semidefinite
+from calib_sim.isaac.tag_builder import TagPoseSpec
 
 
 def _snapshot(index: int) -> FilterStateSnapshot:
@@ -28,8 +29,8 @@ def test_fixed_lag_window_limits_clone_count_and_keeps_psd_covariance() -> None:
     smoother.push_snapshot(_snapshot(0))
     smoother.push_snapshot(_snapshot(1))
     smoother.push_snapshot(_snapshot(2))
-    smoother.refine_tag_pose(tag_id=42, pose_wt=np.eye(4, dtype=np.float64))
-    smoother.refine_tag_pose(tag_id=42, pose_wt=np.eye(4, dtype=np.float64) * 2.0)
+    smoother.refine_tag_pose(tag_id=42, pose_wt=np.eye(4, dtype=np.float64), size_m=0.20, is_anchor=False)
+    smoother.refine_tag_pose(tag_id=42, pose_wt=np.eye(4, dtype=np.float64) * 2.0, size_m=0.20, is_anchor=False)
     solved = smoother.solve()
 
     assert len(solved.cloned_positions_world_m) == 2
@@ -37,3 +38,34 @@ def test_fixed_lag_window_limits_clone_count_and_keeps_psd_covariance() -> None:
     assert solved.active_tag_poses[42].shape == (4, 4)
     assert np.all(np.isfinite(solved.covariance))
     assert is_positive_semidefinite(solved.covariance)
+
+
+def test_active_tag_pose_specs_preserve_tag_sizes() -> None:
+    smoother = FixedLagSmoother(lag_size=2)
+    anchor_pose_map = {
+        1: TagPoseSpec(
+            tag_id=1,
+            size_m=0.20,
+            position_world_m=(0.0, 0.0, 0.0),
+            rotation_wt=((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+            is_anchor=True,
+        ),
+        2: TagPoseSpec(
+            tag_id=2,
+            size_m=0.06,
+            position_world_m=(0.2, 0.0, 0.0),
+            rotation_wt=((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+            is_anchor=False,
+        ),
+    }
+    smoother.observe_auxiliary_detections(detections=(), current_state=_snapshot(0), anchor_pose_map=anchor_pose_map)
+    smoother.refine_tag_pose(tag_id=2, pose_wt=np.eye(4, dtype=np.float64), size_m=0.06, is_anchor=False)
+    smoother.refine_tag_pose(tag_id=2, pose_wt=np.eye(4, dtype=np.float64), size_m=0.06, is_anchor=False)
+    smoother.refine_tag_pose(tag_id=2, pose_wt=np.eye(4, dtype=np.float64), size_m=0.06, is_anchor=False)
+    smoother.refine_tag_pose(tag_id=2, pose_wt=np.eye(4, dtype=np.float64), size_m=0.06, is_anchor=False)
+    smoother.refine_tag_pose(tag_id=2, pose_wt=np.eye(4, dtype=np.float64), size_m=0.06, is_anchor=False)
+
+    pose_specs = smoother.active_tag_pose_specs(min_observation_count=0)
+
+    assert pose_specs[1].size_m == 0.20
+    assert pose_specs[2].size_m == 0.06

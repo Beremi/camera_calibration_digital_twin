@@ -41,14 +41,34 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--headless", action="store_true", default=False)
-    parser.add_argument("--duration-s", type=float, default=10.0)
+    parser.add_argument("--duration-s", type=float, default=8.0)
     parser.add_argument("--max-steps", type=int, default=None)
-    parser.add_argument("--mode", choices=("visual", "fused", "open-loop", "closed-loop"), default="closed-loop")
+    parser.add_argument("--estimator-mode", choices=("visual", "fused"), default="fused")
+    parser.add_argument("--controller-mode", choices=("open-loop", "closed-loop"), default="closed-loop")
+    parser.add_argument("--mode", choices=("visual", "fused", "open-loop", "closed-loop"), default=None)
+    parser.add_argument(
+        "--bootstrap-control-policy",
+        choices=("hold_until_first_detection", "gt_until_first_detection"),
+        default="hold_until_first_detection",
+    )
     parser.add_argument("--promote-latest-complete", action="store_true")
     parser.add_argument("--dry-run", action="store_true", help="Validate config and manifest wiring without starting Isaac.")
     parser.add_argument("--validate-config-only", action="store_true")
+    parser.add_argument("--allow-incomplete-report", action="store_true")
     parser.add_argument("--allow-gt-debug-control", action="store_true")
     return parser.parse_args()
+
+
+def _resolve_mode_args(args: argparse.Namespace) -> tuple[str, str]:
+    if args.mode is None:
+        return str(args.estimator_mode), str(args.controller_mode)
+    legacy_mapping = {
+        "visual": ("visual", "closed-loop"),
+        "fused": ("fused", "closed-loop"),
+        "open-loop": ("fused", "open-loop"),
+        "closed-loop": ("fused", "closed-loop"),
+    }
+    return legacy_mapping[str(args.mode)]
 
 
 def _isaac_version() -> str:
@@ -60,6 +80,7 @@ def _isaac_version() -> str:
 
 def main() -> int:
     args = parse_args()
+    estimator_mode, controller_mode = _resolve_mode_args(args)
     run_id = args.run_id or datetime.now(timezone.utc).strftime("run_%Y%m%d_%H%M%S")
     run_dir = Path(args.output_root) / run_id
     bootstrap = IsaacAppBootstrapConfig(
@@ -76,7 +97,10 @@ def main() -> int:
         seed=int(args.seed),
         duration_s=float(args.duration_s),
         max_steps=None if args.max_steps is None else int(args.max_steps),
-        mode=str(args.mode),
+        estimator_mode=estimator_mode,
+        controller_mode=controller_mode,
+        bootstrap_control_policy=str(args.bootstrap_control_policy),
+        mode=args.mode,
         promote_latest_complete=bool(args.promote_latest_complete),
         allow_gt_debug_control=bool(args.allow_gt_debug_control),
     )
@@ -91,6 +115,9 @@ def main() -> int:
         stage_usd_path=runtime.config.stage_path if Path(runtime.config.stage_path).exists() else "programmatic:anchor_room",
         robot_preset=runtime.config.robot_preset,
         anchor_tag_id=runtime.config.anchor_tag_id,
+        estimator_mode=runtime.config.estimator_mode,
+        controller_mode=runtime.config.controller_mode,
+        bootstrap_control_policy=runtime.config.bootstrap_control_policy,
         noise_presets={
             "imu": str(runtime.config.config_payloads["imu"].get("noise_preset", Path(args.imu_config).stem)),
             "actuation": str(runtime.config.config_payloads["actuation"].get("name", Path(args.actuation_config).stem)),
@@ -112,9 +139,10 @@ def main() -> int:
     try:
         runtime.start()
         summary = runtime.run_until_done()
-        report_payload = generate_isaac_report_artifacts(run_dir, allow_incomplete=True)
+        report_payload = generate_isaac_report_artifacts(run_dir, allow_incomplete=bool(args.allow_incomplete_report))
         summary.latest_any_promoted = bool(report_payload.get("latest_any_link"))
         summary.latest_complete_promoted = bool(report_payload.get("latest_complete_link"))
+        summary.complete = bool(report_payload.get("complete", False))
         runtime.persist_summary(summary)
         summary_payload["summary"] = summary.as_json()
         summary_payload["report"] = {
@@ -122,6 +150,14 @@ def main() -> int:
             "latest_any_link": report_payload.get("latest_any_link"),
             "latest_complete_link": report_payload.get("latest_complete_link"),
         }
+        if not report_payload.get("complete", False) and not bool(args.allow_incomplete_report):
+            print(json.dumps(summary_payload, indent=2, sort_keys=True))
+            return 3
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        summary_payload["summary"] = runtime.summary().as_json() if runtime.started else summary_payload.get("summary", {})
+        print(json.dumps(summary_payload, indent=2, sort_keys=True))
+        return 3
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         print(json.dumps(summary_payload, indent=2, sort_keys=True))

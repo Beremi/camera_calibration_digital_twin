@@ -15,6 +15,7 @@ _COMPLETENESS_THRESHOLDS = {
     "camera_frames": 60,
     "imu_packets": 400,
     "commands": 30,
+    "controller_diagnostics": 30,
     "filter_states": 60,
     "smoother_states": 10,
     "uncertainty_states": 60,

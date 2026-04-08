@@ -4,7 +4,7 @@ This handoff is for the current branch:
 
 - `feature/isaac-runtime-first-pass`
 
-It describes where the first real Isaac pass lives in the repo, what is verified, which local artifacts matter, and what still needs expert follow-through.
+It describes where the scientifically complete first Isaac pass lives in the repo, what is verified, which local artifacts matter, and what still needs expert follow-through.
 
 ## Commit Scope Vs Local Workspace
 
@@ -27,11 +27,10 @@ Read these in order:
 4. `report_tex/publication_report_template.tex`
 5. `src/calib_sim/isaac/runtime/main_loop.py`
 
-If you want the shortest path to the current live result, open:
+If you want the shortest path to the current publication inputs, open:
 
-- `output/isaac_runs/first_real_pass_nominal_v2/analysis/run_summary.json`
-- `output/isaac_runs/first_real_pass_nominal_v2/analysis/metrics.json`
-- `output/isaac_runs/first_real_pass_nominal_v2/analysis/report_data/paper_artifacts.tex`
+- `output/isaac_runs/latest_first_pass_suite/analysis/suite_summary.json`
+- `output/isaac_runs/latest_first_pass_suite/analysis/report_data/paper_artifacts.tex`
 - `report_tex/publication_report_template.pdf`
 
 If you want the shortest path to the small checked-in plumbing sample that exists in git history, open:
@@ -39,13 +38,13 @@ If you want the shortest path to the small checked-in plumbing sample that exist
 - `output/isaac_runs/run_20260408_062541/manifest.json`
 - `output/isaac_runs/run_20260408_062541/analysis/metrics.json`
 
-## Current Headline Result
+## Current Publication Inputs
 
-The current local complete Isaac run is:
+The suite-level publication link is:
 
-- `output/isaac_runs/first_real_pass_nominal_v2`
+- `output/isaac_runs/latest_first_pass_suite`
 
-The repo-level promoted link is:
+The per-run fallback link is:
 
 - `output/isaac_runs/latest_complete`
 
@@ -53,22 +52,13 @@ The small checked-in plumbing sample that is safe to inspect from the checkpoint
 
 - `output/isaac_runs/run_20260408_062541`
 
-Key headline values from `first_real_pass_nominal_v2`:
+The canonical fused nominal live run that anchors the paper and diagnostics is:
 
-- camera frames: `120`
-- IMU packets: `800`
-- detections: `320`
-- commands: `200`
-- filter states: `240`
-- smoother states: `40`
-- uncertainty states: `240`
-- mean trajectory position error: `0.0188 m`
-- p95 trajectory position error: `0.0203 m`
-- map error: `0.00325 m`
-- mean waypoint error: `0.0369 m`
-- waypoint completion fraction: `0.75`
+- `output/isaac_runs/first_pass_fused_closed-loop_servo_nominal_seed_007`
 
-This is the run currently feeding the publication pipeline.
+The suite executor and regeneration details are tracked in:
+
+- `docs/isaac_first_pass_results.md`
 
 ## Repo Map
 
@@ -139,6 +129,7 @@ This is the run currently feeding the publication pipeline.
 - `src/calib_sim/isaac/runtime/replay.py`
   - raw/estimate/GT loaders
   - note: no-GT boundary is enforced at load time
+  - note: replay is analysis/report regeneration only on this branch, not a raw-log estimator re-solve
 - `src/calib_sim/reporting/__init__.py`
   - completeness gating and latest-link promotion
 - `src/calib_sim/reporting/isaac_report_metrics.py`
@@ -151,7 +142,11 @@ This is the run currently feeding the publication pipeline.
   - live experiment entrypoint
 - `scripts/replay_isaac_anchor_vio.py`
   - replay / report regeneration entrypoint
-  - note: still analysis-oriented, not a full estimator re-solve path yet
+  - note: analysis-only on this branch, not a full estimator re-solve path
+- `scripts/run_isaac_ablation_suite.py`
+  - executes the first-pass 2x2 matrix, 5-seed closed-loop reproducibility sweep, and actuation comparison
+- `src/calib_sim/reporting/isaac_first_pass_suite.py`
+  - aggregates per-run metrics into suite CSV/JSON/TeX publication artifacts
 - `scripts/generate_isaac_report_artifacts.py`
   - publication artifact generation with completeness enforcement
 
@@ -178,8 +173,18 @@ Most important tests for the first pass:
 
 These are useful in the shared workspace and explain how the current result was reached:
 
+- `output/isaac_runs/first_pass_fused_closed-loop_servo_nominal_seed_007`
+  - canonical headline run used by `latest_first_pass_suite`
+- `output/isaac_runs/first_pass_fused_closed-loop_none_seed_007`
+  - actuation comparison partner for the canonical headline cell
+- `output/isaac_runs/first_pass_visual_closed-loop_servo_nominal_seed_007`
+  - visual closed-loop comparison cell
+- `output/isaac_runs/first_pass_fused_open-loop_servo_nominal_seed_007`
+  - fused open-loop comparison cell
+- `output/isaac_runs/first_pass_visual_open-loop_servo_nominal_seed_007`
+  - visual open-loop comparison cell
 - `output/isaac_runs/first_real_pass_nominal_v2`
-  - current headline complete run
+  - older pre-suite milestone run retained for historical comparison
 - `output/isaac_runs/first_real_pass_recheck`
   - earlier live run after the tag-pose fix, before control/path cleanup
 - `output/isaac_runs/texture_probe_g6`
@@ -187,7 +192,7 @@ These are useful in the shared workspace and explain how the current result was 
 - `output/isaac_runs/first_pass_probe_camfix5`
   - useful for seeing the earlier weird tag layout / camera debugging phase
 
-There are many other probe/debug directories under `output/isaac_runs/`. They are intentionally left in the shared workspace for expert inspection, but they are not all authoritative. Treat `first_real_pass_nominal_v2` as the main current run.
+There are many other probe/debug directories under `output/isaac_runs/`. They are intentionally left in the shared workspace for expert inspection, but they are not all authoritative. Treat the `first_pass_*` suite runs and `latest_first_pass_suite` as the authoritative first-pass publication inputs.
 
 ## How To Reproduce The Current First Pass
 
@@ -196,21 +201,35 @@ There are many other probe/debug directories under `output/isaac_runs/`. They ar
 ```bash
 source .venv-isaac/bin/activate
 export OMNI_KIT_ACCEPT_EULA=YES
-python scripts/run_isaac_anchor_vio.py --headless --duration-s 4.0 --run-id first_real_pass_nominal_v2 --mode closed-loop
+python scripts/run_isaac_anchor_vio.py \
+  --headless \
+  --duration-s 8.0 \
+  --run-id first_pass_fused_closed-loop_servo_nominal_seed_007 \
+  --estimator-mode fused \
+  --controller-mode closed-loop \
+  --bootstrap-control-policy hold_until_first_detection
+```
+
+### Run The Full First-Pass Suite
+
+```bash
+source .venv-isaac/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+python scripts/run_isaac_ablation_suite.py --headless
 ```
 
 ### Regenerate Report Artifacts
 
 ```bash
 source .venv/bin/activate
-python scripts/generate_isaac_report_artifacts.py output/isaac_runs/first_real_pass_nominal_v2
+python scripts/generate_isaac_report_artifacts.py output/isaac_runs/first_pass_fused_closed-loop_servo_nominal_seed_007
 ```
 
 ### Replay / Rebuild Analysis
 
 ```bash
 source .venv/bin/activate
-python scripts/replay_isaac_anchor_vio.py output/isaac_runs/first_real_pass_nominal_v2
+python scripts/replay_isaac_anchor_vio.py output/isaac_runs/first_pass_fused_closed-loop_servo_nominal_seed_007
 ```
 
 ### Compile The Paper
@@ -226,30 +245,29 @@ latexmk -pdf -interaction=nonstopmode publication_report_template.tex
 Verified in the current workspace:
 
 - a real live Isaac run produces nonzero camera, IMU, detection, command, estimate, and uncertainty artifacts
-- the anchor tag is visible in every frame of the current headline run
+- the full 2x2 estimator/controller matrix exists at seed `7`
+- the 5-seed closed-loop reproducibility sweep exists for both `visual` and `fused`
+- the minimum `none` vs `servo_nominal` actuation comparison exists for the fused closed-loop headline cell
+- the anchor tag is visible in every frame of the canonical headline run
 - native anchor PnP is aligned with GT after the corner/size fix
 - `latest_complete` now promotes only from runs that pass completeness checks
-- report artifact generation works without `--allow-incomplete` on the current headline run
-- the publication PDF compiles against the live artifact bundle
+- `latest_first_pass_suite` is populated and drives the paper before `latest_complete`
+- report artifact generation works without `--allow-incomplete` on the canonical run and the suite bundle
+- the publication PDF compiles against the suite artifact bundle
+- publication-mode closed-loop control uses `hold_until_first_detection`, not GT bootstrap
+- the canonical fused closed-loop run reaches completion fraction `1.0`, IK failure fraction `0.0`, and anchor visible fraction `1.0`
 
 ## Known Limitations
 
 These are the main honest gaps remaining for expert follow-up:
 
 - `scripts/replay_isaac_anchor_vio.py` does not yet re-solve the estimator from raw logs; it currently rebuilds analysis/report outputs
-- the controller still incurs many IK holds in the live run, even though the trajectory and tracking metrics are now reasonable
-- the current first pass is scientifically interpretable but not benchmark-complete
-- multi-seed sweeps, ideal/nominal/stress comparisons, and stronger baseline comparisons are still pending
+- the first-pass branch keeps replay analysis-only to avoid scope creep into a second-system rewrite
+- the suite-driven publication path is intentionally narrow and does not yet cover broader ideal/nominal/stress campaigns
 - the broader `output/isaac_runs/` tree contains many exploratory runs that have not been cleaned up or curated
 
 ## Best Next Expert Steps
 
-1. Decide whether replay should stay analysis-only or become a true raw-log estimator replay.
-2. Reduce IK failure count in the closed-loop controller path.
-3. Add the minimum comparison runs:
-   - visual-only
-   - fused
-   - open-loop
-   - closed-loop estimate
-4. Run 5-seed reproducibility on the current headline config.
-5. Fill the remaining `\ArtifactPending{}` rows in the paper from generated artifacts rather than manual edits.
+1. Verify the suite summary under `latest_first_pass_suite` against the intended canonical run IDs.
+2. Inspect the remaining estimator-quality metrics, especially trajectory error and uncertainty calibration, now that controller semantics are stable.
+3. Decide whether the next branch should prioritize raw-log estimator re-solve or broader stress/visibility campaigns.

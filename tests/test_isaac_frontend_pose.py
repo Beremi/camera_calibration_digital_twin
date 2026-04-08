@@ -129,3 +129,33 @@ def test_frontend_does_not_assign_pose_to_fallback_matched_quads() -> None:
     assert detection.pose_camera_tvec_m is None
     assert detection.visibility_flags["native_backend"] is False
     assert detection.visibility_flags["pose_ready"] is False
+    assert len(pack.anchor_detections) == 0
+    assert len(pack.anchor_pose_detections) == 0
+
+
+def test_frontend_distinguishes_anchor_visibility_from_pose_ready_anchor_updates() -> None:
+    frontend = IsaacAprilTagFrontend(
+        anchor_tag_id=42,
+        detector=_FakeDetector(
+            detections=[
+                TagDetection(
+                    family="36h11",
+                    tag_id=42,
+                    corners_xy_clockwise=_project_corners(0.2 * (512.0 / 624.0), z_m=1.0),
+                    center_xy=(640.0, 360.0),
+                    points5_xy=[],
+                    quality={"detector_backend": "opencv_aruco_apriltag36h11_bright_quad_match"},
+                )
+            ]
+        ),
+    )
+
+    pack = frontend.process_bgr_frame(
+        np.zeros((720, 1280, 3), dtype=np.uint8),
+        frame_packet=_frame_packet(),
+        tag_size_by_id={42: 0.2},
+    )
+
+    assert pack.metadata["anchor_visible"] is True
+    assert len(pack.anchor_detections) == 1
+    assert len(pack.anchor_pose_detections) == 0

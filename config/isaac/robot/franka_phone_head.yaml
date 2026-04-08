@@ -1,0 +1,23 @@
+name: franka_phone_head
+robot_name: franka
+asset_mode: usd
+asset_path: Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd
+articulation_prim_path: /World/Robot
+ee_frame: panda_hand
+camera_mount_prim_path: /World/Robot/panda_hand/phone_mount
+imu_mount_prim_path: /World/Robot/panda_hand/phone_imu
+joint_names:
+  - panda_joint1
+  - panda_joint2
+  - panda_joint3
+  - panda_joint4
+  - panda_joint5
+  - panda_joint6
+  - panda_joint7
+  - panda_finger_joint1
+  - panda_finger_joint2
+control_mode: position
+base_position_world_m: [-0.38926083, -0.00467130, 0.0]
+base_orientation_rpy_deg: [0.0, 0.0, 0.0]
+ik_robot_name: Franka
+ik_frame_name: panda_hand

@@ -1,7 +1,12 @@
 name: phone_nominal
+prim_path: /World/Robot/panda_hand/phone_imu
+parent_prim_path: /World/Robot/panda_hand
 rate_hz: 200.0
 frame_id: I
-read_gravity: true
+local_translation_m: [0.0, 0.0, 0.0]
+local_orientation_rpy_deg: [0.0, 0.0, 0.0]
+read_gravity: false
+imu_semantics: specific_force
 noise_preset: imu_nominal_phone
 gravity_world_mps2: [0.0, 0.0, -9.81]
 bias_model:

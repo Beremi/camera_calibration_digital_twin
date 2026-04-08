@@ -2,12 +2,25 @@
 
 This repository is now in a hybrid state:
 
-- a runnable browser-based calibration simulator is the primary working target
-- a richer Isaac Sim based runtime is still scaffolded, not production-ready
+- the preserved browser-based checkpoints remain the regression baseline and historical path
+- a first real Isaac Sim pass now exists locally, with live sensing, online estimation, closed-loop control, and artifact-driven reporting
+- the Isaac path is usable for first-pass experiments, but it is not yet tuned or benchmark-complete
 
 The current frozen checkpoint is documented in [docs/checkpoint_01.md](docs/checkpoint_01.md). It corresponds to the corrected analysis run `output/interactive_runs/run_20260406_083611` and represents the first checkpoint where the interactive app, recording pipeline, visual pose fitting, and IMU trajectory reconstruction are all working together cleanly enough to preserve.
 
 The new batch-estimation milestones are documented in [docs/checkpoint_02_batch_estimation.md](docs/checkpoint_02_batch_estimation.md), [docs/checkpoint_03_scientific_report.md](docs/checkpoint_03_scientific_report.md), and [docs/estimation.md](docs/estimation.md).
+
+As of April 8, 2026, the current local Isaac first-pass headline run in this workspace is:
+
+- `output/isaac_runs/first_real_pass_nominal_v2`
+
+The paper/report pipeline consumes:
+
+- `output/isaac_runs/latest_complete`
+
+The expert-oriented repo map for the current first-pass branch is:
+
+- `docs/isaac_first_pass_expert_handoff.md`
 
 ## Checkpoint 01 State
 
@@ -41,6 +54,12 @@ To run the current browser sim you need:
 - a modern browser
 
 You do not need Isaac Sim for the current browser checkpoint.
+
+To run the Isaac first pass on this machine you need:
+
+- the dedicated Isaac environment `.venv-isaac`
+- Isaac Sim 6.x installed into that environment
+- an RTX-capable Linux workstation
 
 ## Bootstrap The Environment
 
@@ -85,11 +104,38 @@ The current main challenge scene is:
 
 The browser app details are documented in [docs/app.md](docs/app.md).
 
+## Run Isaac First Pass
+
+For the current mounted-camera Franka first pass:
+
+```bash
+source .venv-isaac/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+python scripts/run_isaac_anchor_vio.py --headless --duration-s 10.0 --promote-latest-complete
+```
+
+To regenerate report artifacts for a finished Isaac run:
+
+```bash
+source .venv/bin/activate
+python scripts/generate_isaac_report_artifacts.py output/isaac_runs/first_real_pass_nominal_v2
+```
+
+To compile the paper against `latest_complete`:
+
+```bash
+source .venv/bin/activate
+cd report_tex
+latexmk -pdf -interaction=nonstopmode publication_report_template.tex
+```
+
 ## Run Tests
 
 ```bash
 .venv/bin/python -m pytest -q
 ```
+
+Isaac-specific tests should be run from `.venv-isaac`.
 
 ## Optional Services
 
@@ -160,16 +206,27 @@ What is working now:
 - recording and analysis pipeline
 - checkpoint-quality documentation in `docs/`
 
-What is still scaffold-level:
+What is now first-pass real:
 
-- Isaac Sim runtime integration in `src/calib_sim/sim/runtime.py`
-- broader ROS/Isaac system from the original blueprint docs
+- Isaac runtime under `src/calib_sim/isaac/`
+- Franka-first live stage build with anchor and auxiliary tags
+- live camera and IMU logging into `output/isaac_runs/<run_id>/`
+- online AprilTag frontend, anchored filter, fixed-lag smoother, and closed-loop path tracking
+- artifact-driven LaTeX report generation through `report_tex/`
+
+What is still not final:
+
+- camera placement and control tuning are first-pass, not polished
+- headline quality metrics are real but not yet competitive or tuned
+- multi-seed and stress-ablation campaigns remain future work
+- ROS 2 mirroring and broader Isaac integration remain secondary to the standalone first-pass runtime
 
 ## Documentation
 
 Start with:
 
 - [docs/README.md](docs/README.md)
+- [docs/isaac_first_pass_expert_handoff.md](docs/isaac_first_pass_expert_handoff.md)
 - [docs/checkpoint_01.md](docs/checkpoint_01.md)
 - [docs/checkpoint_02_batch_estimation.md](docs/checkpoint_02_batch_estimation.md)
 - [docs/checkpoint_03_scientific_report.md](docs/checkpoint_03_scientific_report.md)

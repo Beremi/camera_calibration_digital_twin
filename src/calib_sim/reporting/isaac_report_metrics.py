@@ -202,6 +202,21 @@ def _first_realized_position(row: dict[str, Any]) -> float | None:
     return _float_or_none(first)
 
 
+def _first_command_value(row: dict[str, Any]) -> float | None:
+    raw_value = _float_or_none(row.get("command_value"))
+    if raw_value is not None:
+        return raw_value
+    for key in ("desired_positions", "effective_positions"):
+        raw = row.get(key)
+        if raw in ("", None):
+            continue
+        first = str(raw).split("|")[0]
+        value = _float_or_none(first)
+        if value is not None:
+            return value
+    return None
+
+
 def _actuator_tracking_error(command_rows: list[dict[str, Any]], realized_rows: list[dict[str, Any]]) -> float | None:
     realized_samples = []
     for row in realized_rows:
@@ -215,7 +230,7 @@ def _actuator_tracking_error(command_rows: list[dict[str, Any]], realized_rows: 
     errors: list[float] = []
     for row in command_rows:
         timestamp = _float_or_none(row.get("timestamp_s"))
-        command_value = _float_or_none(row.get("command_value"))
+        command_value = _first_command_value(row)
         if timestamp is None or command_value is None:
             continue
         realized_index = int(np.argmin(np.abs(realized_times - timestamp)))
@@ -257,7 +272,7 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
     smoother_rows = bundle.estimates["smoother_state"]
     command_rows = bundle.raw["commands"]
 
-    command_values = [abs(float(row["command_value"])) for row in command_rows] if command_rows else []
+    command_values = [abs(value) for row in command_rows if (value := _first_command_value(row)) is not None]
     max_command = max(command_values) if command_values else 0.0
     saturation_fraction = (
         0.0

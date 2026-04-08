@@ -1,16 +1,129 @@
-"""Standalone Isaac runtime orchestration.
-
-The class below is intentionally light: it provides a deterministic shell for
-future Isaac integration while remaining importable and testable without Isaac.
-"""
+"""Standalone Isaac runtime orchestration for the first live pass."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+import time
+from typing import Any
 
+import cv2
+import numpy as np
+
+from calib_sim.isaac.actuation.servo_model import ServoCorruptionConfig, UncertainServoModel
+from calib_sim.isaac.clocks import FixedRateClock, TimestampTriplet
+from calib_sim.isaac.control.path_tracker import PathTracker
+from calib_sim.isaac.control.safety_gates import SafetyGates
+from calib_sim.isaac.control.waypoint_manager import Waypoint, WaypointManager
+from calib_sim.isaac.estimation.fixed_lag_smoother import FixedLagSmoother
+from calib_sim.isaac.estimation.online_filter import AnchoredOnlineFilter
+from calib_sim.isaac.frontend.apriltag_frontend import IsaacAprilTagFrontend
+from calib_sim.isaac.logging.schemas import IsaacCameraFramePacket, IsaacJointCommandPacket, IsaacRealizedJointPacket
+from calib_sim.isaac.logging.writer import IsaacRunWriter
+from calib_sim.isaac.robot_builder import LiveRobotBinding, build_robot_binding
+from calib_sim.isaac.sensors import IsaacCameraBinding, IsaacImuBinding, camera_spec_from_config, imu_spec_from_config
+from calib_sim.isaac.stage_builder import StageBuildArtifacts, IsaacStageSpec, build_anchor_room_geometry, stage_spec_from_config
+from calib_sim.isaac.tag_builder import TagPoseSpec
 from calib_sim.sim.runtime import RuntimeConfig, SimulationRuntime
+
+
+def _normalize(vector: np.ndarray, *, default: np.ndarray) -> np.ndarray:
+    candidate = np.asarray(vector, dtype=np.float64).reshape(-1)
+    norm = float(np.linalg.norm(candidate))
+    if norm < 1e-12:
+        return np.asarray(default, dtype=np.float64).reshape(candidate.shape)
+    return candidate / norm
+
+
+def _rotation_matrix_to_quaternion_wxyz(rotation: np.ndarray) -> np.ndarray:
+    matrix = np.asarray(rotation, dtype=np.float64).reshape(3, 3)
+    trace = float(np.trace(matrix))
+    if trace > 0.0:
+        s = 2.0 * np.sqrt(trace + 1.0)
+        return np.array(
+            [
+                0.25 * s,
+                (matrix[2, 1] - matrix[1, 2]) / s,
+                (matrix[0, 2] - matrix[2, 0]) / s,
+                (matrix[1, 0] - matrix[0, 1]) / s,
+            ],
+            dtype=np.float64,
+        )
+    diagonal = np.diag(matrix)
+    if diagonal[0] > diagonal[1] and diagonal[0] > diagonal[2]:
+        s = 2.0 * np.sqrt(1.0 + matrix[0, 0] - matrix[1, 1] - matrix[2, 2])
+        return np.array(
+            [
+                (matrix[2, 1] - matrix[1, 2]) / s,
+                0.25 * s,
+                (matrix[0, 1] + matrix[1, 0]) / s,
+                (matrix[0, 2] + matrix[2, 0]) / s,
+            ],
+            dtype=np.float64,
+        )
+    if diagonal[1] > diagonal[2]:
+        s = 2.0 * np.sqrt(1.0 + matrix[1, 1] - matrix[0, 0] - matrix[2, 2])
+        return np.array(
+            [
+                (matrix[0, 2] - matrix[2, 0]) / s,
+                (matrix[0, 1] + matrix[1, 0]) / s,
+                0.25 * s,
+                (matrix[1, 2] + matrix[2, 1]) / s,
+            ],
+            dtype=np.float64,
+        )
+    s = 2.0 * np.sqrt(1.0 + matrix[2, 2] - matrix[0, 0] - matrix[1, 1])
+    return np.array(
+        [
+            (matrix[1, 0] - matrix[0, 1]) / s,
+            (matrix[0, 2] + matrix[2, 0]) / s,
+            (matrix[1, 2] + matrix[2, 1]) / s,
+            0.25 * s,
+        ],
+        dtype=np.float64,
+    )
+
+
+def _look_at_orientation_wxyz(
+    eye_world_m: np.ndarray,
+    target_world_m: np.ndarray,
+    *,
+    up_hint_world_m: np.ndarray | None = None,
+) -> np.ndarray:
+    eye = np.asarray(eye_world_m, dtype=np.float64).reshape(3)
+    target = np.asarray(target_world_m, dtype=np.float64).reshape(3)
+    forward = _normalize(target - eye, default=np.array([0.0, 0.0, -1.0], dtype=np.float64))
+    up_hint = np.asarray([0.0, 0.0, 1.0] if up_hint_world_m is None else up_hint_world_m, dtype=np.float64).reshape(3)
+    up = _normalize(up_hint - np.dot(up_hint, forward) * forward, default=np.array([0.0, 1.0, 0.0], dtype=np.float64))
+    left = _normalize(np.cross(up, forward), default=np.array([0.0, 1.0, 0.0], dtype=np.float64))
+    up = _normalize(np.cross(forward, left), default=np.array([0.0, 0.0, 1.0], dtype=np.float64))
+    return _rotation_matrix_to_quaternion_wxyz(np.column_stack((forward, left, up)))
+
+
+@dataclass(slots=True)
+class IsaacRunSummary:
+    run_id: str
+    run_dir: str
+    duration_s: float
+    step_count: int
+    counts: dict[str, int]
+    warnings: list[str] = field(default_factory=list)
+    complete: bool = False
+    latest_any_promoted: bool = False
+    latest_complete_promoted: bool = False
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "run_dir": self.run_dir,
+            "duration_s": float(self.duration_s),
+            "step_count": int(self.step_count),
+            "counts": {str(key): int(value) for key, value in self.counts.items()},
+            "warnings": list(self.warnings),
+            "complete": bool(self.complete),
+            "latest_any_promoted": bool(self.latest_any_promoted),
+            "latest_complete_promoted": bool(self.latest_complete_promoted),
+        }
 
 
 @dataclass(slots=True)
@@ -18,12 +131,20 @@ class IsaacRuntimeConfig:
     stage_path: str
     robot_preset: str
     anchor_tag_id: int
+    run_id: str = "adhoc"
+    run_dir: str = "output/isaac_runs/adhoc"
     headless: bool = True
     width: int = 1280
     height: int = 720
     use_ros2_bridge: bool = False
     seed: int = 7
+    duration_s: float = 10.0
+    max_steps: int | None = None
+    mode: str = "closed-loop"
+    promote_latest_complete: bool = False
+    allow_gt_debug_control: bool = False
     config_paths: dict[str, str] = field(default_factory=dict)
+    config_payloads: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def runtime_config(self) -> RuntimeConfig:
         return RuntimeConfig(headless=self.headless, width=self.width, height=self.height)
@@ -33,46 +154,609 @@ class IsaacRuntimeConfig:
             "stage_path": self.stage_path,
             "robot_preset": self.robot_preset,
             "anchor_tag_id": int(self.anchor_tag_id),
+            "run_id": self.run_id,
+            "run_dir": self.run_dir,
             "headless": bool(self.headless),
             "width": int(self.width),
             "height": int(self.height),
             "use_ros2_bridge": bool(self.use_ros2_bridge),
             "seed": int(self.seed),
+            "duration_s": float(self.duration_s),
+            "max_steps": None if self.max_steps is None else int(self.max_steps),
+            "mode": self.mode,
+            "promote_latest_complete": bool(self.promote_latest_complete),
+            "allow_gt_debug_control": bool(self.allow_gt_debug_control),
             "config_paths": dict(self.config_paths),
         }
 
 
 class IsaacStandaloneRuntime:
-    """Minimal lifecycle wrapper around the soft-import SimulationRuntime."""
+    """Real first-pass runtime orchestrator over Isaac Sim."""
 
     def __init__(self, config: IsaacRuntimeConfig) -> None:
         self.config = config
         self._runtime = SimulationRuntime(config.runtime_config())
-        self._step_hooks: list[Callable[[int], None]] = []
+        self._writer = IsaacRunWriter(config.run_dir)
+        self._rng = np.random.default_rng(int(config.seed))
+        self._warnings: list[str] = []
+        self._counts = {
+            "camera_frames": 0,
+            "detections": 0,
+            "imu_packets": 0,
+            "commands": 0,
+            "realized_joints": 0,
+            "filter_states": 0,
+            "smoother_states": 0,
+            "uncertainty_states": 0,
+        }
+        self._timeline = None
+        self._world = None
+        self._stage_artifacts: StageBuildArtifacts | None = None
+        self._robot_binding: LiveRobotBinding | None = None
+        self._camera_binding: IsaacCameraBinding | None = None
+        self._imu_binding: IsaacImuBinding | None = None
+        self._frontend: IsaacAprilTagFrontend | None = None
+        self._filter: AnchoredOnlineFilter | None = None
+        self._smoother: FixedLagSmoother | None = None
+        self._tracker: PathTracker | None = None
+        self._filter_clock: FixedRateClock | None = None
+        self._smoother_clock: FixedRateClock | None = None
+        self._controller_clock: FixedRateClock | None = None
+        self._servo_models: list[UncertainServoModel] = []
+        self._tag_pose_map: dict[int, TagPoseSpec] = {}
+        self._latest_filter_snapshot = None
+        self._latest_uncertainty = None
+        self._last_anchor_visible = False
+        self._last_detections = ()
+        self._physics_dt_s = 1.0 / float(self.config.config_payloads["scene"]["physics_rate_hz"])
+        self._sim_time_s = 0.0
         self.started = False
         self.steps_executed = 0
+        self._control_target_orientation_wxyz: np.ndarray | None = None
+        self._last_open_loop_target_position: np.ndarray | None = None
+        self._stage_from_file_loaded = False
+        self._previous_joint_positions: np.ndarray | None = None
+        self._ik_failure_count = 0
+        self._finalized_summary: IsaacRunSummary | None = None
 
-    def register_step_hook(self, callback: Callable[[int], None]) -> None:
-        self._step_hooks.append(callback)
+    @property
+    def writer(self) -> IsaacRunWriter:
+        return self._writer
+
+    def boot_kit(self) -> None:
+        self._runtime.start()
+        import omni.timeline
+
+        self._timeline = omni.timeline.get_timeline_interface()
+
+    def open_or_build_stage(self) -> None:
+        stage_path = Path(self.config.stage_path)
+        if stage_path.exists():
+            import omni.usd
+
+            omni.usd.get_context().open_stage(str(stage_path.resolve()))
+            for _ in range(10):
+                self._runtime.step()
+            self._stage_from_file_loaded = True
+        else:
+            self._warnings.append(
+                f"Configured stage_path={self.config.stage_path!r} was not found; falling back to programmatic build."
+            )
+            self._stage_from_file_loaded = False
+
+    def bind_world(self) -> None:
+        from isaacsim.core.api import World
+
+        scene_config = self.config.config_payloads["scene"]
+        camera_rate_hz = float(scene_config.get("camera_rate_hz", self.config.config_payloads["camera"]["rate_hz"]))
+        self._world = World(
+            stage_units_in_meters=1.0,
+            physics_dt=self._physics_dt_s,
+            rendering_dt=1.0 / max(camera_rate_hz, 30.0),
+        )
+        self._world.scene.add_default_ground_plane()
+        stage_spec: IsaacStageSpec = stage_spec_from_config(scene_config)
+        if self._stage_from_file_loaded:
+            self._stage_artifacts = StageBuildArtifacts(
+                stage_spec=stage_spec,
+                tag_pose_specs={int(tag.tag_id): tag for tag in stage_spec.tag_pose_specs},
+                warnings=[],
+            )
+        else:
+            self._stage_artifacts = build_anchor_room_geometry(
+                scene_config=scene_config,
+                generated_asset_dir=Path(self.config.run_dir) / "generated_assets" / "tags",
+            )
+        self._tag_pose_map = dict(self._stage_artifacts.tag_pose_specs)
+        self._warnings.extend(self._stage_artifacts.warnings)
+
+    def bind_robot(self) -> None:
+        if self._world is None:
+            raise RuntimeError("World must be bound before the robot.")
+        self._robot_binding = build_robot_binding(world=self._world, robot_config=self.config.config_payloads["robot"])
+
+    def bind_sensors(self) -> None:
+        if self._robot_binding is None:
+            raise RuntimeError("Robot must be bound before sensors.")
+        camera_spec = camera_spec_from_config(
+            self.config.config_payloads["camera"],
+            default_prim_path=self._robot_binding.robot.camera_mount_prim_path,
+        )
+        imu_spec = imu_spec_from_config(
+            self.config.config_payloads["imu"],
+            default_prim_path=self._robot_binding.robot.imu_mount_prim_path,
+            parent_prim_path=f"{self._robot_binding.robot.articulation_prim_path}/{self._robot_binding.robot.ee_frame}",
+        )
+        self._camera_binding = IsaacCameraBinding.create(camera_spec)
+        self._imu_binding = IsaacImuBinding.create(imu_spec)
+
+    def bind_frontend_estimation_control(self) -> None:
+        if self._robot_binding is None:
+            raise RuntimeError("Robot must be bound before frontend/estimation/control.")
+        estimation_config = self.config.config_payloads["estimation"]
+        control_config = self.config.config_payloads["control"]
+        actuation_config = self.config.config_payloads["actuation"]
+        filter_mode = {
+            "visual": "visual_anchor_plus_aux_tags",
+            "fused": "visual_inertial_anchor_plus_aux_tags",
+            "closed-loop": "visual_inertial_anchor_plus_aux_tags",
+            "open-loop": "visual_inertial_anchor_plus_aux_tags",
+        }.get(self.config.mode, "visual_inertial_anchor_plus_aux_tags")
+        self._frontend = IsaacAprilTagFrontend(anchor_tag_id=int(self.config.anchor_tag_id))
+        self._filter = AnchoredOnlineFilter.identity_initialized(mode=filter_mode)
+        self._smoother = FixedLagSmoother(lag_size=int(estimation_config.get("smoother", {}).get("lag_size", 30)))
+        waypoints = tuple(
+            Waypoint(
+                position_world_m=tuple(float(value) for value in waypoint["position_world_m"]),
+                tolerance_m=float(waypoint.get("tolerance_m", 0.02)),
+            )
+            for waypoint in control_config.get("waypoints", [])
+        )
+        self._tracker = PathTracker(
+            waypoint_manager=WaypointManager(waypoints=waypoints),
+            safety_gates=SafetyGates(
+                max_position_radius_95_m=float(control_config.get("gates", {}).get("max_position_radius_95_m", 0.10)),
+                max_innovation_norm=float(control_config.get("gates", {}).get("max_innovation_norm", 0.25)),
+                max_anchor_lost_steps=int(control_config.get("gates", {}).get("max_anchor_lost_steps", 5)),
+            ),
+            proportional_gain=float(control_config.get("proportional_gain", 1.0)),
+            max_command_abs=float(control_config.get("max_command_abs", 0.25)),
+        )
+        self._filter_clock = FixedRateClock(rate_hz=float(estimation_config.get("filter", {}).get("output_rate_hz", 60.0)))
+        self._smoother_clock = FixedRateClock(rate_hz=float(estimation_config.get("smoother", {}).get("solve_rate_hz", 10.0)))
+        self._controller_clock = FixedRateClock(rate_hz=float(self.config.config_payloads["scene"].get("controller_rate_hz", 50.0)))
+        servo_config = ServoCorruptionConfig(
+            delay_s=float(actuation_config.get("delay_s", 0.0)),
+            gain_error=float(actuation_config.get("gain_error", 1.0)),
+            bias=float(actuation_config.get("bias", 0.0)),
+            lag_time_constant_s=float(actuation_config.get("lag_time_constant_s", 0.05)),
+            rate_limit_per_s=float(actuation_config.get("rate_limit_per_s", 4.0)),
+            deadband=float(actuation_config.get("deadband", 0.0)),
+            backlash=float(actuation_config.get("backlash", 0.0)),
+            process_noise_std=float(actuation_config.get("process_noise_std", 0.0)),
+            drop_probability=float(actuation_config.get("drop_probability", 0.0)),
+            jitter_std_s=float(actuation_config.get("jitter_std_s", 0.0)),
+        )
+        joint_count = len(self._robot_binding.robot.joint_names)
+        self._servo_models = [
+            UncertainServoModel(
+                servo_config,
+                initial_position=0.0,
+                rng=np.random.default_rng(int(self.config.seed) + index + 1),
+            )
+            for index in range(joint_count)
+        ]
+
+    def warmup(self) -> None:
+        if self._world is None or self._robot_binding is None or self._camera_binding is None:
+            raise RuntimeError("World, robot, and camera must be initialized before warmup.")
+        self._timeline.play()
+        self._timeline.commit()
+        self._world.reset()
+        self._robot_binding.set_default_joint_positions()
+        self._robot_binding.end_effector_prim.initialize()
+        self._camera_binding.initialize()
+        current_positions = self._robot_binding.get_joint_positions()
+        for index, model in enumerate(self._servo_models):
+            model.position = float(current_positions[index])
+        self._previous_joint_positions = current_positions.copy()
+        for _ in range(30):
+            self._world.step(render=True)
+        ee_position_world_m, ee_orientation_wxyz = self._robot_binding.get_end_effector_pose()
+        self._calibrate_camera_mount_once(ee_position_world_m)
+        for _ in range(10):
+            self._world.step(render=True)
+        self._control_target_orientation_wxyz = ee_orientation_wxyz.copy()
+        self._last_open_loop_target_position = ee_position_world_m.copy()
+        self._write_tag_ground_truth()
+
+    def _calibrate_camera_mount_once(self, ee_position_world_m: np.ndarray) -> None:
+        if self._camera_binding is None:
+            return
+        look_at_world_m = self._camera_binding.spec.look_at_world_m
+        if look_at_world_m is None:
+            return
+        camera_position_world_m = np.asarray(ee_position_world_m, dtype=np.float64).reshape(3) + np.asarray(
+            self._camera_binding.spec.mount_offset_world_m,
+            dtype=np.float64,
+        ).reshape(3)
+        orientation_wxyz = _look_at_orientation_wxyz(
+            camera_position_world_m,
+            np.asarray(look_at_world_m, dtype=np.float64).reshape(3),
+        )
+        self._camera_binding.set_world_pose(
+            position_world_m=camera_position_world_m,
+            orientation_wxyz=orientation_wxyz,
+        )
 
     def start(self) -> None:
-        self._runtime.start()
+        self.boot_kit()
+        self.open_or_build_stage()
+        self.bind_world()
+        self.bind_robot()
+        self.bind_sensors()
+        self.bind_frontend_estimation_control()
+        self.warmup()
         self.started = True
+
+    def _timestamps(self) -> TimestampTriplet:
+        return TimestampTriplet(sim_time_s=self._sim_time_s, sensor_time_s=self._sim_time_s, host_time_s=time.time())
+
+    def _write_tag_ground_truth(self) -> None:
+        tags_payload = []
+        for tag_id, tag_pose in sorted(self._tag_pose_map.items()):
+            tags_payload.append(
+                {
+                    "tag_id": int(tag_id),
+                    "is_anchor": bool(tag_pose.is_anchor),
+                    "size_m": float(tag_pose.size_m),
+                    "position_world_m": [float(value) for value in tag_pose.position_world_m],
+                    "rotation_wt": [[float(entry) for entry in row] for row in tag_pose.rotation_wt],
+                }
+            )
+        self._writer.write_tag_gt({"anchor_tag_id": int(self.config.anchor_tag_id), "tags": tags_payload})
+
+    def _log_realized_state(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        if self._robot_binding is None:
+            raise RuntimeError("Robot binding missing.")
+        joint_positions = self._robot_binding.get_joint_positions()
+        if self._previous_joint_positions is None or self._previous_joint_positions.shape != joint_positions.shape:
+            joint_velocities = np.zeros_like(joint_positions)
+        else:
+            joint_velocities = (joint_positions - self._previous_joint_positions) / float(self._physics_dt_s)
+        self._previous_joint_positions = joint_positions.copy()
+        ee_position_world_m, ee_orientation_wxyz = self._robot_binding.get_end_effector_pose()
+        packet = IsaacRealizedJointPacket(
+            timestamp_s=float(self._sim_time_s),
+            sim_time_s=float(self._sim_time_s),
+            joint_names=self._robot_binding.robot.joint_names,
+            positions=tuple(float(value) for value in joint_positions.tolist()),
+            velocities=tuple(float(value) for value in joint_velocities.tolist()),
+            end_effector_position_world_m=tuple(float(value) for value in ee_position_world_m.tolist()),
+            end_effector_orientation_wxyz=tuple(float(value) for value in ee_orientation_wxyz.tolist()),
+        )
+        self._writer.write_realized_state(packet)
+        self._counts["realized_joints"] += 1
+        gt_joint_row = {
+            "timestamp_s": float(self._sim_time_s),
+            "sim_time_s": float(self._sim_time_s),
+            "ee_px": float(ee_position_world_m[0]),
+            "ee_py": float(ee_position_world_m[1]),
+            "ee_pz": float(ee_position_world_m[2]),
+        }
+        for joint_name, position, velocity in zip(self._robot_binding.robot.joint_names, joint_positions, joint_velocities):
+            gt_joint_row[f"{joint_name}_position"] = float(position)
+            gt_joint_row[f"{joint_name}_velocity"] = float(velocity)
+        self._writer.write_gt(namespace="joint", payload=gt_joint_row)
+        return joint_positions, joint_velocities, ee_position_world_m, ee_orientation_wxyz
+
+    def _process_imu(
+        self,
+        timestamps: TimestampTriplet,
+        *,
+        ee_position_world_m: np.ndarray,
+        ee_orientation_wxyz: np.ndarray,
+    ) -> tuple:
+        if self._imu_binding is None:
+            return ()
+        qw, qx, qy, qz = np.asarray(ee_orientation_wxyz, dtype=np.float64).reshape(4)
+        rotation_wi = np.array(
+            [
+                [1.0 - 2.0 * (qy * qy + qz * qz), 2.0 * (qx * qy - qz * qw), 2.0 * (qx * qz + qy * qw)],
+                [2.0 * (qx * qy + qz * qw), 1.0 - 2.0 * (qx * qx + qz * qz), 2.0 * (qy * qz - qx * qw)],
+                [2.0 * (qx * qz - qy * qw), 2.0 * (qy * qz + qx * qw), 1.0 - 2.0 * (qx * qx + qy * qy)],
+            ],
+            dtype=np.float64,
+        )
+        packets = []
+        for tick in self._imu_binding.due_ticks(self._sim_time_s):
+            packet = self._imu_binding.sample(
+                tick=tick,
+                timestamps=timestamps,
+                position_world_m=ee_position_world_m,
+                rotation_wi=rotation_wi,
+            )
+            if packet is None:
+                continue
+            packets.append(packet)
+            self._writer.write_imu_packet(packet)
+            self._writer.write_gt(
+                namespace="imu",
+                payload={
+                    "timestamp_s": float(packet.timestamp_s),
+                    "sim_time_s": float(packet.sim_time_s),
+                    "ax": float(packet.ax),
+                    "ay": float(packet.ay),
+                    "az": float(packet.az),
+                    "wx": float(packet.wx),
+                    "wy": float(packet.wy),
+                    "wz": float(packet.wz),
+                },
+            )
+            self._counts["imu_packets"] += 1
+        return tuple(packets)
+
+    def _process_camera(self, timestamps: TimestampTriplet) -> None:
+        if self._camera_binding is None or self._frontend is None or self._filter is None:
+            return
+        tag_size_by_id = {int(tag_id): float(tag.size_m) for tag_id, tag in self._tag_pose_map.items()}
+        for tick in self._camera_binding.due_ticks(self._sim_time_s):
+            sample = self._camera_binding.sample(
+                tick=tick,
+                timestamps=timestamps,
+            )
+            if sample is None:
+                continue
+            frame_packet, image_rgb = sample
+            rgb_rel_path = self._writer.save_rgb_image(frame_index=frame_packet.frame_index, image_rgb=image_rgb)
+            frame_packet = IsaacCameraFramePacket(
+                frame_index=frame_packet.frame_index,
+                timestamp_s=frame_packet.timestamp_s,
+                sim_time_s=frame_packet.sim_time_s,
+                sensor_time_s=frame_packet.sensor_time_s,
+                host_time_s=frame_packet.host_time_s,
+                rgb_path=rgb_rel_path,
+                intrinsics_snapshot={
+                    **frame_packet.intrinsics_snapshot,
+                    "distortion_coefficients": list(self._camera_binding.spec.distortion_coefficients),
+                },
+                extrinsics_snapshot=frame_packet.extrinsics_snapshot,
+                image_width_px=frame_packet.image_width_px,
+                image_height_px=frame_packet.image_height_px,
+                visible_gt_tag_ids=frame_packet.visible_gt_tag_ids,
+            )
+            self._writer.write_camera_frame(frame_packet)
+            self._counts["camera_frames"] += 1
+            self._writer.write_gt(
+                namespace="camera",
+                payload={
+                    "timestamp_s": float(frame_packet.timestamp_s),
+                    "sim_time_s": float(frame_packet.sim_time_s),
+                    "px": float(frame_packet.extrinsics_snapshot["position_world_m"][0]),
+                    "py": float(frame_packet.extrinsics_snapshot["position_world_m"][1]),
+                    "pz": float(frame_packet.extrinsics_snapshot["position_world_m"][2]),
+                    "qw": float(frame_packet.extrinsics_snapshot["orientation_wxyz"][0]),
+                    "qx": float(frame_packet.extrinsics_snapshot["orientation_wxyz"][1]),
+                    "qy": float(frame_packet.extrinsics_snapshot["orientation_wxyz"][2]),
+                    "qz": float(frame_packet.extrinsics_snapshot["orientation_wxyz"][3]),
+                },
+            )
+            pack = self._frontend.process_bgr_frame(
+                cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR),
+                frame_packet=frame_packet,
+                tag_size_by_id=tag_size_by_id,
+            )
+            self._writer.write_estimator_input(
+                {
+                    "timestamp_s": float(frame_packet.timestamp_s),
+                    "kind": "frame_pack",
+                    "frame_index": int(frame_packet.frame_index),
+                    "anchor_visible": bool(pack.metadata.get("anchor_visible", False)),
+                    "detected_tag_ids": list(pack.metadata.get("detected_tag_ids", [])),
+                }
+            )
+            for detection in pack.detections:
+                self._writer.write_detection(detection)
+                self._counts["detections"] += 1
+            self._last_detections = pack.detections
+            self._last_anchor_visible = bool(pack.metadata.get("anchor_visible", False))
+            anchor_detections = pack.anchor_detections
+            if anchor_detections:
+                self._filter.update_anchor(
+                    tag_detection=anchor_detections[0],
+                    tag_pose=self._tag_pose_map[int(anchor_detections[0].tag_id)],
+                    measurement_std_m=float(self.config.config_payloads["estimation"].get("filter", {}).get("anchor_measurement_std_m", 0.01)),
+                )
+            auxiliary_detections = tuple(detection for detection in pack.detections if not detection.is_anchor)
+            if auxiliary_detections:
+                self._filter.update_aux_tags(
+                    tag_detections=auxiliary_detections,
+                    mapped_tag_poses=self._tag_pose_map,
+                    trust=float(self.config.config_payloads["estimation"].get("filter", {}).get("auxiliary_update_trust", 0.15)),
+                )
+
+    def _log_filter_and_uncertainty(self) -> None:
+        if self._filter is None or self._filter_clock is None:
+            return
+        for _ in self._filter_clock.advance_to(self._sim_time_s):
+            snapshot = self._filter.export_snapshot(sim_time_s=self._sim_time_s)
+            snapshot.anchor_visible = bool(self._last_anchor_visible)
+            snapshot.mode = self._filter.mode
+            self._writer.write_filter_state(snapshot)
+            self._counts["filter_states"] += 1
+            self._latest_filter_snapshot = snapshot
+            uncertainty = self._filter.current_uncertainty_summary(sim_time_s=self._sim_time_s)
+            self._writer.write_uncertainty(uncertainty)
+            self._counts["uncertainty_states"] += 1
+            self._latest_uncertainty = uncertainty
+
+    def _log_smoother(self) -> None:
+        if self._smoother is None or self._smoother_clock is None or self._latest_filter_snapshot is None:
+            return
+        for _ in self._smoother_clock.advance_to(self._sim_time_s):
+            self._smoother.push_snapshot(self._latest_filter_snapshot)
+            self._smoother.observe_auxiliary_detections(
+                detections=tuple(self._last_detections),
+                current_state=self._latest_filter_snapshot,
+                anchor_pose_map=self._tag_pose_map,
+            )
+            smoother_snapshot = self._smoother.solve()
+            self._writer.write_smoother_state(smoother_snapshot)
+            self._counts["smoother_states"] += 1
+            for tag_id, pose in self._smoother.active_tag_pose_specs().items():
+                if int(tag_id) == int(self.config.anchor_tag_id):
+                    continue
+                self._tag_pose_map[int(tag_id)] = pose
+
+    def _apply_control(self, ee_position_world_m: np.ndarray) -> None:
+        if self._tracker is None or self._controller_clock is None or self._robot_binding is None:
+            return
+        from isaacsim.core.utils.types import ArticulationAction
+
+        for _ in self._controller_clock.advance_to(self._sim_time_s):
+            if self.config.mode == "open-loop":
+                if self._last_open_loop_target_position is None:
+                    self._last_open_loop_target_position = ee_position_world_m.copy()
+                current_position = self._last_open_loop_target_position
+            elif self._counts["detections"] == 0:
+                current_position = ee_position_world_m.copy()
+            elif self.config.allow_gt_debug_control:
+                current_position = ee_position_world_m
+            elif self._filter is not None and self._latest_filter_snapshot is not None:
+                current_position = self._filter.state.position_world_m.copy()
+            else:
+                current_position = ee_position_world_m.copy()
+            position_radius_95_m = 0.05 if self._latest_uncertainty is None else float(self._latest_uncertainty.position_radius_95_m)
+            innovation_norm = 0.0 if self._filter is None else float(self._filter.last_innovation_norm)
+            if self.config.mode != "open-loop" and self._counts["detections"] == 0:
+                position_radius_95_m = max(
+                    position_radius_95_m,
+                    float(self._tracker.safety_gates.max_position_radius_95_m) + 1.0,
+                )
+            path_command = self._tracker.compute_control(
+                current_position_world_m=current_position,
+                position_radius_95_m=position_radius_95_m,
+                innovation_norm=innovation_norm,
+                anchor_visible=bool(self._last_anchor_visible or self.config.mode == "open-loop"),
+            )
+            desired_position = current_position + np.asarray(path_command.command_delta_world_m, dtype=np.float64)
+            joint_targets, ik_success = self._robot_binding.compute_joint_targets_from_pose(
+                target_position_world_m=desired_position,
+                target_orientation_wxyz=self._control_target_orientation_wxyz
+                if self._control_target_orientation_wxyz is not None
+                else np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
+            )
+            if not ik_success:
+                self._ik_failure_count += 1
+                joint_targets = self._robot_binding.get_joint_positions()
+            current_joint_positions = self._robot_binding.get_joint_positions()
+            effective_positions: list[float] = []
+            servo_state: dict[str, Any] = {}
+            dropped_command = False
+            dt_control_s = float(self._controller_clock.period_s)
+            for joint_name, desired_joint_position, servo_model in zip(
+                self._robot_binding.robot.joint_names,
+                joint_targets[: len(self._robot_binding.robot.joint_names)],
+                self._servo_models,
+            ):
+                step = servo_model.step(command=float(desired_joint_position), dt_s=dt_control_s)
+                effective_positions.append(float(step.realized_position))
+                dropped_command = dropped_command or bool(step.dropped)
+                servo_state[joint_name] = {
+                    "effective_command": float(step.effective_command),
+                    "target": float(step.target),
+                    "dropped": bool(step.dropped),
+                    "realized_velocity": float(step.realized_velocity),
+                }
+            action = ArticulationAction(joint_positions=np.asarray(effective_positions, dtype=np.float64))
+            self._robot_binding.articulation.apply_action(action)
+            self._writer.write_command(
+                IsaacJointCommandPacket(
+                    timestamp_s=float(self._sim_time_s),
+                    sim_time_s=float(self._sim_time_s),
+                    joint_names=self._robot_binding.robot.joint_names,
+                    desired_positions=tuple(float(value) for value in joint_targets[: len(self._robot_binding.robot.joint_names)].tolist()),
+                    effective_positions=tuple(float(value) for value in effective_positions),
+                    controller_mode=self.config.mode,
+                    waypoint_index=int(path_command.waypoint_index),
+                    safety_reason=path_command.safety_reason,
+                    tracking_error_world_m=tuple(float(value) for value in path_command.tracking_error_world_m),
+                    dropped_command=bool(dropped_command),
+                )
+            )
+            self._counts["commands"] += 1
+            self._last_open_loop_target_position = desired_position.copy()
+
+    def _step_once(self) -> None:
+        if self._world is None:
+            raise RuntimeError("Runtime world is not initialized.")
+        self._world.step(render=True)
+        self.steps_executed += 1
+        self._sim_time_s = float(self.steps_executed) * self._physics_dt_s
+        timestamps = self._timestamps()
+        _, _, ee_position_world_m, ee_orientation_wxyz = self._log_realized_state()
+        imu_packets = self._process_imu(
+            timestamps,
+            ee_position_world_m=ee_position_world_m,
+            ee_orientation_wxyz=ee_orientation_wxyz,
+        )
+        if self._filter is not None and imu_packets:
+            self._filter.predict(imu_packets)
+        self._process_camera(timestamps)
+        self._log_filter_and_uncertainty()
+        self._log_smoother()
+        self._apply_control(ee_position_world_m)
 
     def step(self, steps: int = 1) -> None:
         if not self.started:
             raise RuntimeError("Isaac runtime has not been started.")
         for _ in range(max(int(steps), 0)):
-            self._runtime.step()
-            for callback in self._step_hooks:
-                callback(self.steps_executed)
-            self.steps_executed += 1
+            self._step_once()
+
+    def run_until_done(self, max_steps: int | None = None) -> IsaacRunSummary:
+        if not self.started:
+            raise RuntimeError("Isaac runtime has not been started.")
+        step_limit = self.config.max_steps if max_steps is None else int(max_steps)
+        while self._sim_time_s < float(self.config.duration_s):
+            if step_limit is not None and self.steps_executed >= int(step_limit):
+                break
+            self._step_once()
+        summary = self.summary()
+        self.persist_summary(summary)
+        return summary
+
+    def persist_summary(self, summary: IsaacRunSummary) -> IsaacRunSummary:
+        self._finalized_summary = summary
+        self._writer.finalize_summary(summary.as_json())
+        return summary
+
+    def summary(self) -> IsaacRunSummary:
+        complete = all(self._counts[key] > 0 for key in ("camera_frames", "imu_packets", "commands", "filter_states", "smoother_states", "uncertainty_states"))
+        warnings = list(dict.fromkeys(self._warnings))
+        if self._ik_failure_count > 0:
+            warnings.append(
+                f"IK failed {self._ik_failure_count} controller ticks; the runtime held the current joint configuration on those updates."
+            )
+        return IsaacRunSummary(
+            run_id=self.config.run_id,
+            run_dir=str(Path(self.config.run_dir).resolve()),
+            duration_s=float(self._sim_time_s),
+            step_count=int(self.steps_executed),
+            counts=dict(self._counts),
+            warnings=warnings,
+            complete=bool(complete),
+        )
 
     def shutdown(self) -> None:
+        if self._timeline is not None:
+            self._timeline.stop()
+        if self.started:
+            summary = self._finalized_summary if self._finalized_summary is not None else self.summary()
+            self._writer.finalize_summary(summary.as_json())
         self._runtime.shutdown()
         self.started = False
 
     def validate_stage_path(self) -> Path:
         if not self.config.stage_path:
-            raise ValueError("stage_path is required.")
+            return Path(self.config.stage_path)
         return Path(self.config.stage_path)

@@ -19,7 +19,7 @@ from calib_sim.isaac.logging.writer import IsaacRunWriter
 
 
 def make_minimal_isaac_run(tmp_path: Path) -> Path:
-    run_dir = tmp_path / "isaac_run"
+    run_dir = tmp_path / "isaac_runs" / "test_run"
     writer = IsaacRunWriter(run_dir)
     writer.write_config_snapshot("scene", {"stage_path": "assets/isaac/anchor_room.usd", "anchor_tag_id": 0})
     manifest = build_run_manifest(
@@ -54,7 +54,15 @@ def make_minimal_isaac_run(tmp_path: Path) -> Path:
             sim_time_s=0.1,
             frame_index=0,
             tag_id=0,
+            family="apriltag36h11",
+            tag_size_m=0.10,
             corners_xy=((45.0, 55.0), (55.0, 55.0), (55.0, 65.0), (45.0, 65.0)),
+            local_tag_points_m=(
+                (-0.05, -0.05, 0.0),
+                (0.05, -0.05, 0.0),
+                (0.05, 0.05, 0.0),
+                (-0.05, 0.05, 0.0),
+            ),
             corner_order="clockwise_top_left_first",
             score=1.0,
             is_anchor=True,
@@ -62,9 +70,54 @@ def make_minimal_isaac_run(tmp_path: Path) -> Path:
         )
     )
     writer.append_estimator_input({"timestamp_s": 0.1, "kind": "frame_pack", "frame_index": 0})
-    writer.append_imu(IsaacImuPacket(timestamp_s=0.10, sim_time_s=0.10, wx=0.0, wy=0.0, wz=0.0, ax=0.0, ay=0.0, az=9.81, imu_frame="I", noise_preset="phone_nominal"))
-    writer.append_imu(IsaacImuPacket(timestamp_s=0.11, sim_time_s=0.11, wx=0.0, wy=0.0, wz=0.0, ax=0.0, ay=0.0, az=9.81, imu_frame="I", noise_preset="phone_nominal"))
-    writer.append_command(IsaacJointCommandPacket(timestamp_s=0.10, sim_time_s=0.10, joint_id="joint0", command_type="position", command_value=0.2, controller_mode="closed_loop"))
+    writer.append_imu(
+        IsaacImuPacket(
+            packet_index=0,
+            timestamp_s=0.10,
+            sim_time_s=0.10,
+            dt_s=0.01,
+            wx=0.0,
+            wy=0.0,
+            wz=0.0,
+            ax=0.0,
+            ay=0.0,
+            az=9.81,
+            imu_frame="I",
+            imu_semantics="specific_force",
+            noise_preset="phone_nominal",
+        )
+    )
+    writer.append_imu(
+        IsaacImuPacket(
+            packet_index=1,
+            timestamp_s=0.11,
+            sim_time_s=0.11,
+            dt_s=0.01,
+            wx=0.0,
+            wy=0.0,
+            wz=0.0,
+            ax=0.0,
+            ay=0.0,
+            az=9.81,
+            imu_frame="I",
+            imu_semantics="specific_force",
+            noise_preset="phone_nominal",
+        )
+    )
+    writer.append_command(
+        IsaacJointCommandPacket(
+            timestamp_s=0.10,
+            sim_time_s=0.10,
+            joint_names=("joint0",),
+            desired_positions=(0.2,),
+            effective_positions=(0.19,),
+            controller_mode="closed_loop",
+            waypoint_index=0,
+            safety_reason="nominal",
+            tracking_error_world_m=(0.0, 0.0, 0.0),
+            dropped_command=False,
+        )
+    )
     writer.append_realized_joint(
         IsaacRealizedJointPacket(
             timestamp_s=0.10,

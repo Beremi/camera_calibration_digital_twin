@@ -181,6 +181,20 @@ def _first_realized_position(row: dict[str, Any]) -> float | None:
     return _float_or_none(str(raw).split("|")[0])
 
 
+def _first_command_value(row: dict[str, Any]) -> float | None:
+    raw_value = _float_or_none(row.get("command_value"))
+    if raw_value is not None:
+        return raw_value
+    for key in ("desired_positions", "effective_positions"):
+        raw = row.get(key)
+        if raw in ("", None):
+            continue
+        value = _float_or_none(str(raw).split("|")[0])
+        if value is not None:
+            return value
+    return None
+
+
 def _matched_position_error_series(
     filter_rows: list[dict[str, Any]],
     gt_rows: list[dict[str, Any]],
@@ -259,7 +273,7 @@ def write_isaac_report_figures(run_dir: str | Path, metrics: dict[str, Any]) -> 
         command_figure,
         title="Command Magnitude Timeline",
         x_values=[float(row["timestamp_s"]) for row in command_rows if "timestamp_s" in row],
-        y_values=[abs(float(row["command_value"])) for row in command_rows if "command_value" in row],
+        y_values=[abs(value) for row in command_rows if (value := _first_command_value(row)) is not None],
         y_label="abs command",
     )
 
@@ -354,8 +368,16 @@ def write_isaac_report_figures(run_dir: str | Path, metrics: dict[str, Any]) -> 
         )
     realized_times = [float(row["timestamp_s"]) for row in realized_rows if _float_or_none(row.get("timestamp_s")) is not None and _first_realized_position(row) is not None]
     realized_values = [float(_first_realized_position(row)) for row in realized_rows if _float_or_none(row.get("timestamp_s")) is not None and _first_realized_position(row) is not None]
-    command_times = [float(row["timestamp_s"]) for row in command_rows if _float_or_none(row.get("timestamp_s")) is not None and _float_or_none(row.get("command_value")) is not None]
-    command_values = [float(row["command_value"]) for row in command_rows if _float_or_none(row.get("timestamp_s")) is not None and _float_or_none(row.get("command_value")) is not None]
+    command_times = [
+        float(row["timestamp_s"])
+        for row in command_rows
+        if _float_or_none(row.get("timestamp_s")) is not None and _first_command_value(row) is not None
+    ]
+    command_values = [
+        float(_first_command_value(row))
+        for row in command_rows
+        if _float_or_none(row.get("timestamp_s")) is not None and _first_command_value(row) is not None
+    ]
     _save_xy_plot(
         actuator_path,
         title="Actuator Command Versus Realized Motion",

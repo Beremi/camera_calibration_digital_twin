@@ -38,8 +38,10 @@ def test_gyroscope_measurement_uses_body_frame_angular_rate() -> None:
 def test_preintegration_preserves_stationary_state_for_specific_force_packets() -> None:
     packets = tuple(
         IsaacImuPacket(
+            packet_index=index,
             timestamp_s=0.01 * (index + 1),
             sim_time_s=0.01 * (index + 1),
+            dt_s=0.01,
             wx=0.0,
             wy=0.0,
             wz=0.0,
@@ -47,6 +49,7 @@ def test_preintegration_preserves_stationary_state_for_specific_force_packets() 
             ay=0.0,
             az=9.81,
             imu_frame="I",
+            imu_semantics="specific_force",
             noise_preset="ideal",
         )
         for index in range(4)

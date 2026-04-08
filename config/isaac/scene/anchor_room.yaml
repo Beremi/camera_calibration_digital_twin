@@ -7,21 +7,29 @@ imu_rate_hz: 200.0
 filter_rate_hz: 60.0
 smoother_rate_hz: 10.0
 controller_rate_hz: 50.0
-camera_prim_path: /World/Robot/phone_camera
-imu_prim_path: /World/Robot/phone_imu
 robot_prim_path: /World/Robot
+camera_prim_path: /World/Robot/panda_hand/phone_mount/camera
+imu_prim_path: /World/Robot/panda_hand/phone_imu
 observer_camera_prim_paths:
   - /World/Observer/overview_camera
+table_center_world_m: [0.0, 0.0, -0.02]
+table_scale_m: [0.8, 0.8, 0.04]
 tags:
   - tag_id: 0
     prim_path: /World/Tags/anchor_tag_0
-    size_m: 0.10
+    size_m: 0.20
+    position_world_m: [0.0, 0.0, 0.0025]
+    orientation_rpy_deg: [0.0, 0.0, 0.0]
     is_anchor: true
   - tag_id: 42
     prim_path: /World/Tags/aux_tag_42
-    size_m: 0.10
+    size_m: 0.20
+    position_world_m: [0.26, 0.22, 0.0025]
+    orientation_rpy_deg: [0.0, 0.0, 0.0]
     is_anchor: false
   - tag_id: 88
     prim_path: /World/Tags/aux_tag_88
-    size_m: 0.10
+    size_m: 0.20
+    position_world_m: [-0.26, 0.22, 0.0025]
+    orientation_rpy_deg: [0.0, 0.0, 0.0]
     is_anchor: false

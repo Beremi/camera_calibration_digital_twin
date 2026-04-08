@@ -29,7 +29,8 @@ def test_publication_report_template_compiles_from_source(tmp_path: Path) -> Non
     tex_source = tex_path.read_text(encoding="utf-8")
 
     assert r"\TBD" not in tex_source
-    assert "run_description_rows.tex" in tex_source
+    assert "latest_complete" in tex_source
+    assert "latest_any" in tex_source
     assert "system_architecture.png" in tex_source
     assert "current workspace does not include the Isaac Sim Python modules" not in tex_source
 

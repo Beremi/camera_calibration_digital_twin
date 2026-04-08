@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 
 from calib_sim.isaac.actuation.servo_model import ServoCorruptionConfig, UncertainServoModel
 from calib_sim.reporting import generate_isaac_report_artifacts
@@ -30,13 +31,16 @@ def test_servo_corruption_measurably_changes_realized_motion() -> None:
 
 def test_report_generation_writes_metrics_tables_and_figures(tmp_path) -> None:
     run_dir = make_minimal_isaac_run(tmp_path)
-    payload = generate_isaac_report_artifacts(run_dir)
+    payload = generate_isaac_report_artifacts(run_dir, allow_incomplete=True)
 
     metrics_path = run_dir / "analysis" / "metrics.json"
     assert metrics_path.exists()
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     assert metrics["counts"]["camera_frames"] == 1
     assert metrics["counts"]["imu_packets"] == 2
+    assert payload["complete"] is False
+    assert payload["latest_any_link"] is not None
+    assert payload["latest_complete_link"] is None
     assert (run_dir / "analysis" / "run_description_table.csv").exists()
     assert (run_dir / "analysis" / "estimate_summary_table.csv").exists()
     assert (run_dir / "analysis" / "report_data" / "run_description_rows.tex").exists()
@@ -47,3 +51,10 @@ def test_report_generation_writes_metrics_tables_and_figures(tmp_path) -> None:
     assert (run_dir / "analysis" / "isaac_metrics_summary.png").exists()
     assert (run_dir / "analysis" / "isaac_uncertainty_timeline.png").exists()
     assert payload["metrics"]["run_id"] == "test_run"
+
+
+def test_report_generation_requires_allow_incomplete_for_partial_runs(tmp_path) -> None:
+    run_dir = make_minimal_isaac_run(tmp_path)
+
+    with pytest.raises(ValueError, match="incomplete"):
+        generate_isaac_report_artifacts(run_dir)

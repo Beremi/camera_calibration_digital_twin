@@ -12,8 +12,10 @@ from calib_sim.isaac.logging.schemas import IsaacImuPacket
 def _stationary_packets(count: int) -> tuple[IsaacImuPacket, ...]:
     return tuple(
         IsaacImuPacket(
+            packet_index=index,
             timestamp_s=0.01 * (index + 1),
             sim_time_s=0.01 * (index + 1),
+            dt_s=0.01,
             wx=0.0,
             wy=0.0,
             wz=0.0,
@@ -21,6 +23,7 @@ def _stationary_packets(count: int) -> tuple[IsaacImuPacket, ...]:
             ay=0.0,
             az=9.81,
             imu_frame="I",
+            imu_semantics="specific_force",
             noise_preset="ideal",
         )
         for index in range(count)

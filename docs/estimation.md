@@ -1,6 +1,11 @@
-# Batch Estimation
+# Estimation
 
-This repo now includes a batch estimation package under `src/calib_sim/estimation/` for unknown-map visual bundle adjustment and visual-inertial batch MAP on the interactive simulator recordings.
+This repo now has two estimation tracks:
+
+- `src/calib_sim/estimation/` for the browser/interactive batch-estimation checkpoints
+- `src/calib_sim/isaac/estimation/` for the first-pass live Isaac anchored visual-inertial runtime
+
+The browser batch path remains the preserved scientific baseline for Checkpoint 02/03. The Isaac path now has a real first-pass runtime and artifact bundle under `output/isaac_runs/latest_complete`, but it should still be read as a first complete pass rather than a tuned final estimator.
 
 ## Scope
 
@@ -17,6 +22,30 @@ Not in scope for this pass:
 - robot kinematic calibration factors in the main solve
 - MCMC / full Bayesian sampling
 - time-offset estimation
+
+## Isaac First Pass
+
+The Isaac runtime uses a separate first-pass online estimation/control stack:
+
+- live camera and IMU ingestion under `src/calib_sim/isaac/sensors.py`
+- AprilTag front end under `src/calib_sim/isaac/frontend/apriltag_frontend.py`
+- anchored online filter under `src/calib_sim/isaac/estimation/online_filter.py`
+- fixed-lag smoother under `src/calib_sim/isaac/estimation/fixed_lag_smoother.py`
+- raw / GT / estimate / uncertainty logging under `src/calib_sim/isaac/logging/`
+
+As of April 8, 2026, the current local headline Isaac run is:
+
+- `output/isaac_runs/first_real_pass_nominal_v2`
+
+The publication report consumes:
+
+- `output/isaac_runs/latest_complete/analysis/report_data/`
+
+The Isaac no-GT rule is the same as the batch path:
+
+- inference reads only `raw/` plus config snapshots
+- GT stays under `gt/`
+- replay/inference must not read `gt/`
 
 ## Package Layout
 
@@ -58,6 +87,12 @@ The clean boundary is:
 - `load_batch_dataset(...)` never reads ground truth
 - `load_evaluation_data(...)` is the only GT-loading path
 - `camera_gt.csv` must not affect inference
+
+The same principle now holds for Isaac runs:
+
+- `raw/camera_frames.jsonl`, `raw/detections.jsonl`, `raw/imu.csv`, `raw/commands.csv`, and `raw/realized_joints.csv` are inference/runtime inputs
+- `gt/` is evaluation-only
+- `estimates/` and `analysis/` are outputs
 
 ## Modeling Choices
 

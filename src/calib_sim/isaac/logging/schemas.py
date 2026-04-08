@@ -11,6 +11,14 @@ def _float_list(values: tuple[float, ...] | list[float]) -> list[float]:
     return [float(value) for value in values]
 
 
+def _matrix_list(values: tuple[tuple[float, ...], ...] | list[list[float]]) -> list[list[float]]:
+    return [[float(entry) for entry in row] for row in values]
+
+
+def _pipe_join(values: tuple[str, ...] | tuple[float, ...] | list[str] | list[float]) -> str:
+    return "|".join(str(value) for value in values)
+
+
 @dataclass(slots=True)
 class IsaacCameraFramePacket:
     frame_index: int
@@ -21,6 +29,8 @@ class IsaacCameraFramePacket:
     rgb_path: str
     intrinsics_snapshot: dict[str, Any]
     extrinsics_snapshot: dict[str, Any]
+    image_width_px: int = 0
+    image_height_px: int = 0
     visible_gt_tag_ids: tuple[int, ...] = ()
 
     def as_json(self) -> dict[str, Any]:
@@ -31,6 +41,8 @@ class IsaacCameraFramePacket:
             "sensor_time_s": float(self.sensor_time_s),
             "host_time_s": float(self.host_time_s),
             "rgb_path": self.rgb_path,
+            "image_width_px": int(self.image_width_px),
+            "image_height_px": int(self.image_height_px),
             "intrinsics_snapshot": dict(self.intrinsics_snapshot),
             "extrinsics_snapshot": dict(self.extrinsics_snapshot),
             "visible_gt_tag_ids": [int(tag_id) for tag_id in self.visible_gt_tag_ids],
@@ -47,6 +59,13 @@ class IsaacTagDetectionPacket:
     corner_order: str
     score: float
     is_anchor: bool
+    family: str = "apriltag36h11"
+    tag_size_m: float = 0.0
+    pnp_tag_size_m: float | None = None
+    local_tag_points_m: tuple[tuple[float, float, float], ...] = ()
+    pose_camera_rvec: tuple[float, float, float] | None = None
+    pose_camera_tvec_m: tuple[float, float, float] | None = None
+    detector_backend: str = ""
     visibility_flags: dict[str, bool] = field(default_factory=dict)
 
     def as_json(self) -> dict[str, Any]:
@@ -55,10 +74,17 @@ class IsaacTagDetectionPacket:
             "sim_time_s": float(self.sim_time_s),
             "frame_index": int(self.frame_index),
             "tag_id": int(self.tag_id),
+            "family": self.family,
+            "tag_size_m": float(self.tag_size_m),
+            "pnp_tag_size_m": None if self.pnp_tag_size_m is None else float(self.pnp_tag_size_m),
             "corners_xy": [[float(x), float(y)] for x, y in self.corners_xy],
+            "local_tag_points_m": [[float(x), float(y), float(z)] for x, y, z in self.local_tag_points_m],
             "corner_order": self.corner_order,
             "score": float(self.score),
             "is_anchor": bool(self.is_anchor),
+            "pose_camera_rvec": None if self.pose_camera_rvec is None else _float_list(list(self.pose_camera_rvec)),
+            "pose_camera_tvec_m": None if self.pose_camera_tvec_m is None else _float_list(list(self.pose_camera_tvec_m)),
+            "detector_backend": self.detector_backend,
             "visibility_flags": {str(key): bool(value) for key, value in self.visibility_flags.items()},
         }
 
@@ -75,14 +101,20 @@ class IsaacImuPacket:
     az: float
     imu_frame: str
     noise_preset: str
+    packet_index: int = 0
+    imu_semantics: str = "specific_force"
+    dt_s: float | None = None
+    orientation_wxyz: tuple[float, float, float, float] | None = None
     sensor_time_s: float | None = None
     host_time_s: float | None = None
 
     @classmethod
     def csv_fieldnames(cls) -> list[str]:
         return [
+            "packet_index",
             "timestamp_s",
             "sim_time_s",
+            "dt_s",
             "wx",
             "wy",
             "wz",
@@ -90,15 +122,19 @@ class IsaacImuPacket:
             "ay",
             "az",
             "imu_frame",
+            "imu_semantics",
             "noise_preset",
+            "orientation_wxyz",
             "sensor_time_s",
             "host_time_s",
         ]
 
     def to_csv_row(self) -> dict[str, Any]:
         return {
+            "packet_index": int(self.packet_index),
             "timestamp_s": float(self.timestamp_s),
             "sim_time_s": float(self.sim_time_s),
+            "dt_s": None if self.dt_s is None else float(self.dt_s),
             "wx": float(self.wx),
             "wy": float(self.wy),
             "wz": float(self.wz),
@@ -106,7 +142,9 @@ class IsaacImuPacket:
             "ay": float(self.ay),
             "az": float(self.az),
             "imu_frame": self.imu_frame,
+            "imu_semantics": self.imu_semantics,
             "noise_preset": self.noise_preset,
+            "orientation_wxyz": "" if self.orientation_wxyz is None else _pipe_join(self.orientation_wxyz),
             "sensor_time_s": None if self.sensor_time_s is None else float(self.sensor_time_s),
             "host_time_s": None if self.host_time_s is None else float(self.host_time_s),
         }
@@ -116,30 +154,42 @@ class IsaacImuPacket:
 class IsaacJointCommandPacket:
     timestamp_s: float
     sim_time_s: float
-    joint_id: str
-    command_type: str
-    command_value: float
+    joint_names: tuple[str, ...]
+    desired_positions: tuple[float, ...]
+    effective_positions: tuple[float, ...]
     controller_mode: str
+    waypoint_index: int
+    safety_reason: str
+    tracking_error_world_m: tuple[float, float, float]
+    dropped_command: bool = False
 
     @classmethod
     def csv_fieldnames(cls) -> list[str]:
         return [
             "timestamp_s",
             "sim_time_s",
-            "joint_id",
-            "command_type",
-            "command_value",
+            "joint_names",
+            "desired_positions",
+            "effective_positions",
             "controller_mode",
+            "waypoint_index",
+            "safety_reason",
+            "tracking_error_world_m",
+            "dropped_command",
         ]
 
     def to_csv_row(self) -> dict[str, Any]:
         return {
             "timestamp_s": float(self.timestamp_s),
             "sim_time_s": float(self.sim_time_s),
-            "joint_id": self.joint_id,
-            "command_type": self.command_type,
-            "command_value": float(self.command_value),
+            "joint_names": _pipe_join(self.joint_names),
+            "desired_positions": _pipe_join(self.desired_positions),
+            "effective_positions": _pipe_join(self.effective_positions),
             "controller_mode": self.controller_mode,
+            "waypoint_index": int(self.waypoint_index),
+            "safety_reason": self.safety_reason,
+            "tracking_error_world_m": _pipe_join(self.tracking_error_world_m),
+            "dropped_command": bool(self.dropped_command),
         }
 
 
@@ -150,6 +200,8 @@ class IsaacRealizedJointPacket:
     joint_names: tuple[str, ...]
     positions: tuple[float, ...]
     velocities: tuple[float, ...]
+    end_effector_position_world_m: tuple[float, float, float] | None = None
+    end_effector_orientation_wxyz: tuple[float, float, float, float] | None = None
     servo_internal_state: dict[str, Any] | None = None
 
     @classmethod
@@ -160,6 +212,8 @@ class IsaacRealizedJointPacket:
             "joint_names",
             "positions",
             "velocities",
+            "end_effector_position_world_m",
+            "end_effector_orientation_wxyz",
             "servo_internal_state",
         ]
 
@@ -167,8 +221,25 @@ class IsaacRealizedJointPacket:
         return {
             "timestamp_s": float(self.timestamp_s),
             "sim_time_s": float(self.sim_time_s),
-            "joint_names": "|".join(self.joint_names),
-            "positions": "|".join(str(float(value)) for value in self.positions),
-            "velocities": "|".join(str(float(value)) for value in self.velocities),
-            "servo_internal_state": "" if self.servo_internal_state is None else json.dumps(dict(self.servo_internal_state), sort_keys=True),
+            "joint_names": _pipe_join(self.joint_names),
+            "positions": _pipe_join(self.positions),
+            "velocities": _pipe_join(self.velocities),
+            "end_effector_position_world_m": ""
+            if self.end_effector_position_world_m is None
+            else _pipe_join(self.end_effector_position_world_m),
+            "end_effector_orientation_wxyz": ""
+            if self.end_effector_orientation_wxyz is None
+            else _pipe_join(self.end_effector_orientation_wxyz),
+            "servo_internal_state": ""
+            if self.servo_internal_state is None
+            else json.dumps(dict(self.servo_internal_state), sort_keys=True),
         }
+
+
+__all__ = [
+    "IsaacCameraFramePacket",
+    "IsaacImuPacket",
+    "IsaacJointCommandPacket",
+    "IsaacRealizedJointPacket",
+    "IsaacTagDetectionPacket",
+]

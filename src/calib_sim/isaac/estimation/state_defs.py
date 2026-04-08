@@ -31,6 +31,8 @@ class FilterStateSnapshot:
     gyro_bias_rps: np.ndarray
     accel_bias_mps2: np.ndarray
     covariance: np.ndarray
+    anchor_visible: bool = False
+    mode: str = "visual_inertial_anchor_plus_aux_tags"
     innovation_diagnostics: dict[str, float] = field(default_factory=dict)
 
     def as_json(self) -> dict[str, Any]:
@@ -43,6 +45,8 @@ class FilterStateSnapshot:
             "gyro_bias_rps": [float(value) for value in np.asarray(self.gyro_bias_rps, dtype=np.float64)],
             "accel_bias_mps2": [float(value) for value in np.asarray(self.accel_bias_mps2, dtype=np.float64)],
             "covariance": _matrix_json(self.covariance),
+            "anchor_visible": bool(self.anchor_visible),
+            "mode": self.mode,
             "innovation_diagnostics": {str(key): float(value) for key, value in self.innovation_diagnostics.items()},
         }
 
@@ -54,6 +58,8 @@ class SmootherStateSnapshot:
     active_tag_poses: dict[int, np.ndarray]
     cloned_positions_world_m: tuple[np.ndarray, ...]
     covariance: np.ndarray
+    cost_trace: tuple[float, ...] = ()
+    diagnostics: dict[str, float] = field(default_factory=dict)
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -65,6 +71,8 @@ class SmootherStateSnapshot:
                 for position in self.cloned_positions_world_m
             ],
             "covariance": _matrix_json(self.covariance),
+            "cost_trace": [float(value) for value in self.cost_trace],
+            "diagnostics": {str(key): float(value) for key, value in self.diagnostics.items()},
         }
 
 

@@ -27,6 +27,8 @@
 \newcommand{\SO}{\mathrm{SO}(3)}
 \newcommand{\SE}{\mathrm{SE}(3)}
 \newcommand{\ArtifactPending}{\textit{pending Isaac artifact}}
+\newcommand{\IsaacLatestCompleteReportDataDir}{../output/isaac_runs/latest_complete/analysis/report_data}
+\newcommand{\IsaacLatestAnyReportDataDir}{../output/isaac_runs/latest_any/analysis/report_data}
 \newcommand{\IsaacLatestReportDataDir}{../output/isaac_runs/latest/analysis/report_data}
 \newcommand{\IsaacRunDescriptionRows}{%
 Run id & \ArtifactPending{} \\
@@ -75,7 +77,17 @@ Stress & Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & 
 \newcommand{\Log}{\mathrm{Log}}
 \newcommand{\diag}{\mathrm{diag}}
 \newcommand{\trace}{\mathrm{tr}}
-\IfFileExists{\IsaacLatestReportDataDir/paper_artifacts.tex}{\input{\IsaacLatestReportDataDir/paper_artifacts.tex}}{}
+\IfFileExists{\IsaacLatestCompleteReportDataDir/paper_artifacts.tex}{%
+    \renewcommand{\IsaacLatestReportDataDir}{\IsaacLatestCompleteReportDataDir}%
+    \input{\IsaacLatestCompleteReportDataDir/paper_artifacts.tex}%
+}{%
+    \IfFileExists{\IsaacLatestAnyReportDataDir/paper_artifacts.tex}{%
+        \renewcommand{\IsaacLatestReportDataDir}{\IsaacLatestAnyReportDataDir}%
+        \input{\IsaacLatestAnyReportDataDir/paper_artifacts.tex}%
+    }{%
+        \IfFileExists{\IsaacLatestReportDataDir/paper_artifacts.tex}{\input{\IsaacLatestReportDataDir/paper_artifacts.tex}}{}%
+    }%
+}
 
 \title{Publication-Ready Scientific Report Template for \\ Anchored Visual-Inertial Path Tracking with Uncertain Servo Actuation in Isaac Sim}
 \author{Prepared as an implementation and reporting scaffold for the current repository}
@@ -86,7 +98,7 @@ Stress & Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & 
 
 \begin{center}
 \fbox{\parbox{0.94\linewidth}{
-\textbf{How to use this document.} This is a publication-grade template and writing scaffold. The method, notation, problem statement, evaluation protocol, and references are already written. Measured result rows and figures must be generated from Isaac run artifacts under \texttt{output/isaac\_runs/<run\_id>/analysis/report\_data/}. When \texttt{output/isaac\_runs/latest/analysis/report\_data/} exists, the tables and figures below automatically consume those generated files; otherwise the paper falls back to explicit pending markers.
+\textbf{How to use this document.} This is a publication-grade template and writing scaffold. The method, notation, problem statement, evaluation protocol, and references are already written. Measured result rows and figures must be generated from Isaac run artifacts under \texttt{output/isaac\_runs/<run\_id>/analysis/report\_data/}. The paper prefers \texttt{output/isaac\_runs/latest\_complete/analysis/report\_data/}, then falls back to \texttt{latest\_any}, and only then to explicit pending markers.
 }}
 \end{center}
 
@@ -94,12 +106,12 @@ Stress & Fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & 
 We consider a robot arm carrying a phone-like sensing head consisting of a monocular camera and an inertial measurement unit (IMU). The task is to track a prescribed path in a coordinate frame fixed by one known anchor tag while treating the remaining visible tags as static but initially unknown landmarks, and while accounting for realistic actuator uncertainty rather than ideal joint execution. We propose a two-timescale architecture in which a low-latency visual-inertial filter estimates the dynamic motion state online, a fixed-lag smoother refines auxiliary-tag poses and nuisance parameters, and a path-tracking controller closes the loop on the estimated anchored-frame pose. The implementation target is Isaac Sim with physics-based IMU simulation, camera rendering, and explicit logging of raw measurements, ground truth, commands, realized actuator states, estimates, and uncertainty. This report defines the exact estimation problem, the measurement and process models, the actuator uncertainty model, the implementation contract, the evaluation protocol, and the publication-ready result tables and figures that must be produced by the checkpoint. Experimental placeholders are provided for trajectory accuracy, map accuracy, path-tracking performance, uncertainty calibration, and robustness under sensing and actuation stress.\end{abstract}
 
 \section{Draft Status}
-This repository now contains an Isaac-oriented runtime, a dedicated Isaac-capable virtual environment path, and artifact-driven report generators. The scientific sections of this paper are reviewable now, and any available run under \texttt{output/isaac\_runs/latest/} can populate the manifest, metric, and figure slots below automatically. Headline comparison rows still require executed Isaac benchmark runs and seed sweeps, so any entry rendered as \ArtifactPending{} should be read as a reporting gap rather than as a measured outcome. Existing browser-simulator artifacts may inform background wording or a historical appendix, but they are not substitutes for the Isaac-only trajectory, control, actuator, or manifest tables in this paper.
+This repository now contains a completed first-pass Isaac runtime, a dedicated Isaac-capable virtual environment path, and artifact-driven report generators. Any available complete run under \texttt{output/isaac\_runs/latest\_complete/} can populate the manifest, metric, and figure slots below automatically. When no complete run is present, the paper falls back to \texttt{latest\_any} and then to the checked-in placeholder markers so the document still compiles in a fresh checkout. Headline comparison rows still require executed Isaac benchmark sweeps and seed studies, so any entry rendered as \ArtifactPending{} should be read as a reporting gap rather than as a measured outcome. Existing browser-simulator artifacts may inform background wording or a historical appendix, but they are not substitutes for the Isaac-only trajectory, control, actuator, or manifest tables in this paper.
 
 \section{Introduction}
 Real-time state estimation and control for camera-equipped robot arms sit at the intersection of visual-inertial estimation, fiducial-aided localization, and closed-loop robot control. Visual-inertial methods achieve robust motion estimation by combining high-rate inertial propagation with visual corrections from geometric image measurements \citep{mourikis2007msckf, forster2017preintegration, leutenegger2015okvis, qin2018vinsmono}. Fiducials such as AprilTags provide metric, repeatable geometric constraints that are especially attractive for calibration, benchmarking, and controlled robotic experiments \citep{olson2011apriltag, wang2016apriltag2}. For online operation, the key challenge is not merely estimating pose, but doing so under realistic sensing and actuation imperfections while retaining calibrated uncertainty and reproducibility.
 
-The current repository already contains a research-grade browser simulator and batch-estimation pipeline. The next step is to port the architecture to Isaac Sim and make the runtime scientifically useful rather than purely demonstrative. Isaac Sim provides physics-based sensors, ROS 2 bridging, camera data publication utilities, synthetic data generation workflows, and explicit simulation-time control, making it an appropriate platform for a digital-twin implementation of anchored visual-inertial control experiments \citep{nvidia_isaac_imu, nvidia_isaac_ros2_bridge, nvidia_isaac_ros2_camera, nvidia_isaac_replicator, nvidia_isaac_sim_manager}.
+The current repository already contains a research-grade browser simulator and batch-estimation pipeline. It now also contains a first real Isaac Sim pass with live sensing, online estimation, closed-loop control, and artifact-driven reporting. Isaac Sim provides physics-based sensors, ROS 2 bridging, camera data publication utilities, synthetic data generation workflows, and explicit simulation-time control, making it an appropriate platform for a digital-twin implementation of anchored visual-inertial control experiments \citep{nvidia_isaac_imu, nvidia_isaac_ros2_bridge, nvidia_isaac_ros2_camera, nvidia_isaac_replicator, nvidia_isaac_sim_manager}.
 
 This report is built around three design decisions.
 \begin{enumerate}[leftmargin=1.5em]
@@ -320,7 +332,7 @@ The final report must include:
 \subsection{Run description}
 \begin{table}[H]
 \centering
-\caption{Headline Isaac Sim run description. Values are loaded from the latest generated Isaac run when available.}
+\caption{Headline Isaac Sim run description. Values are loaded from the latest complete Isaac run when available, otherwise the latest incomplete run or the pending placeholders.}
 \begin{tabular}{ll}
 \toprule
 Quantity & Value \\
@@ -483,7 +495,7 @@ The completed checkpoint must include at least the following figures:
     }{%
         \fbox{\rule{0pt}{2.1in}\rule{0.92\linewidth}{0pt}}%
     }
-    \caption{Residual or innovation histogram derived from the latest artifact bundle.}
+    \caption{Residual or innovation histogram derived from the latest complete artifact bundle when available.}
 \end{figure}
 
 \begin{figure}[H]
@@ -493,7 +505,7 @@ The completed checkpoint must include at least the following figures:
     }{%
         \fbox{\rule{0pt}{2.1in}\rule{0.92\linewidth}{0pt}}%
     }
-    \caption{Uncertainty calibration or coverage plot generated from the latest artifact bundle.}
+    \caption{Uncertainty calibration or coverage plot generated from the latest complete artifact bundle when available.}
 \end{figure}
 
 \begin{figure}[H]

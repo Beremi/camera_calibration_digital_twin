@@ -30,31 +30,49 @@ class IsaacAppBootstrapConfig:
     actuation_config_path: str
     estimation_config_path: str
     control_config_path: str
+    run_id: str
+    run_dir: str
     headless: bool = True
     width: int = 1280
     height: int = 720
     use_ros2_bridge: bool = False
     seed: int = 7
+    duration_s: float = 10.0
+    max_steps: int | None = None
+    mode: str = "closed-loop"
+    promote_latest_complete: bool = False
+    allow_gt_debug_control: bool = False
 
     def as_runtime_config(self) -> IsaacRuntimeConfig:
+        config_paths = {
+            "scene": self.scene_config_path,
+            "robot": self.robot_config_path,
+            "camera": self.camera_config_path,
+            "imu": self.imu_config_path,
+            "actuation": self.actuation_config_path,
+            "estimation": self.estimation_config_path,
+            "control": self.control_config_path,
+        }
+        config_payloads = {name: load_isaac_yaml(path) for name, path in config_paths.items()}
+        scene_payload = config_payloads["scene"]
         return IsaacRuntimeConfig(
-            stage_path=str(load_isaac_yaml(self.scene_config_path).get("stage_path", "")),
-            robot_preset=str(load_isaac_yaml(self.robot_config_path).get("name", Path(self.robot_config_path).stem)),
-            anchor_tag_id=int(load_isaac_yaml(self.scene_config_path).get("anchor_tag_id", 0)),
+            stage_path=str(scene_payload.get("stage_path", "")),
+            robot_preset=str(config_payloads["robot"].get("name", Path(self.robot_config_path).stem)),
+            anchor_tag_id=int(scene_payload.get("anchor_tag_id", 0)),
+            run_id=self.run_id,
+            run_dir=self.run_dir,
             headless=bool(self.headless),
             width=int(self.width),
             height=int(self.height),
             use_ros2_bridge=bool(self.use_ros2_bridge),
             seed=int(self.seed),
-            config_paths={
-                "scene": self.scene_config_path,
-                "robot": self.robot_config_path,
-                "camera": self.camera_config_path,
-                "imu": self.imu_config_path,
-                "actuation": self.actuation_config_path,
-                "estimation": self.estimation_config_path,
-                "control": self.control_config_path,
-            },
+            duration_s=float(self.duration_s),
+            max_steps=None if self.max_steps is None else int(self.max_steps),
+            mode=str(self.mode),
+            promote_latest_complete=bool(self.promote_latest_complete),
+            allow_gt_debug_control=bool(self.allow_gt_debug_control),
+            config_paths=config_paths,
+            config_payloads=config_payloads,
         )
 
 
@@ -62,3 +80,6 @@ def create_runtime(config: IsaacAppBootstrapConfig) -> IsaacStandaloneRuntime:
     """Create a standalone runtime from config paths without starting Isaac."""
 
     return IsaacStandaloneRuntime(config.as_runtime_config())
+
+
+__all__ = ["IsaacAppBootstrapConfig", "create_runtime", "load_isaac_yaml"]

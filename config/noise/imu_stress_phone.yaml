@@ -1,0 +1,13 @@
+name: imu_stress_phone
+mode: async_realism
+rate_hz: 100.0
+read_gravity: true
+accel_noise_std_mps2: [0.0143569359, 0.0143569359, 0.0143569359]
+gyro_noise_std_rps: [0.0036651915, 0.0036651915, 0.0036651915]
+accel_bias_initial_mps2: [0.0, 0.0, 0.0]
+gyro_bias_initial_rps: [0.0, 0.0, 0.0]
+accel_bias_walk_std_mps2_per_sqrt_s: [0.00035, 0.00035, 0.00035]
+gyro_bias_walk_std_rps_per_sqrt_s: [0.00006, 0.00006, 0.00006]
+gravity_mps2: [0.0, 0.0, -9.81]
+sample_jitter_std_s: 0.0015
+drop_probability: 0.03

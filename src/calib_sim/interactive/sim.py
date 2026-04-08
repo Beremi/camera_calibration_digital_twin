@@ -19,9 +19,24 @@ import cv2
 import numpy as np
 import yaml
 
+from calib_sim.common.inertial import (
+    accelerometer_specific_force_body,
+    gyroscope_measurement_body,
+    imu_pose_from_camera_pose,
+)
 from calib_sim.common.video import ManagedMp4Writer
 from calib_sim.interactive.analysis import analyze_recording_run
 from calib_sim.interactive.camera_model import PhoneCameraModel, load_phone_camera_model
+from calib_sim.interactive.imu_runtime import (
+    ImuMeasurement,
+    ImuRuntime,
+    ImuTruthSample,
+    checkpoint_01_compat_imu_runtime,
+    describe_imu_measurement_convention,
+    load_checkpoint_compat_preset,
+    load_imu_noise_preset,
+    load_timing_preset,
+)
 from calib_sim.tag_service.detector import AprilTag36h11Detector
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -177,6 +192,16 @@ class AutoDemoConfig:
 
 
 @dataclass(slots=True)
+class ImuRuntimeConfig:
+    mode: str
+    noise_preset_path: str
+    timing_preset_path: str
+    write_truth_csv: bool
+    imu_translation_m: tuple[float, float, float]
+    imu_rpy_deg: tuple[float, float, float]
+
+
+@dataclass(slots=True)
 class RobotArmPresetConfig:
     preset_id: str
     name: str
@@ -219,6 +244,7 @@ class InteractiveSimConfig:
     robot_arm: RobotArmPresetConfig
     auto_demo: AutoDemoConfig
     auto_analyze_after_recording: bool
+    imu: ImuRuntimeConfig
     tags: list[SceneTagConfig]
     observer_cameras: list[ObserverCameraConfig]
 
@@ -252,6 +278,14 @@ class InteractiveSimConfig:
             "robot_arm": self.robot_arm.summary(),
             "auto_demo": self.auto_demo.summary(),
             "auto_analyze_after_recording": self.auto_analyze_after_recording,
+            "imu": {
+                "mode": self.imu.mode,
+                "noise_preset_path": self.imu.noise_preset_path,
+                "timing_preset_path": self.imu.timing_preset_path,
+                "write_truth_csv": bool(self.imu.write_truth_csv),
+                "imu_translation_m": list(self.imu.imu_translation_m),
+                "imu_rpy_deg": list(self.imu.imu_rpy_deg),
+            },
             "observer_cameras": [
                 {
                     "name": camera.name,
@@ -437,6 +471,8 @@ def load_interactive_config(config_path: str | Path, *, robot_arm_preset_path: s
     limits_raw = controls_raw.get("servo_limits_deg", robot_preset.servo_limits_deg)
     speed_raw = controls_raw.get("servo_speed_deg_s", robot_preset.servo_speed_deg_s)
     auto_demo_raw = raw.get("auto_demo", {})
+    imu_raw = raw.get("imu", {}) or {}
+    mount_raw = device_raw.get("mount", {}) or {}
     auto_demo_channels_raw = auto_demo_raw.get("channels") or []
     default_channels = [
         {"offset_deg": 0.0, "amplitude_deg": 22.0, "frequency_hz": 0.07, "phase_deg": 0.0},
@@ -473,6 +509,15 @@ def load_interactive_config(config_path: str | Path, *, robot_arm_preset_path: s
         for index, entry in enumerate(scene_raw.get("boxes", []) or [])
     ]
 
+    imu_mode = str(imu_raw.get("mode", "checkpoint_01_compat"))
+    if imu_mode == "checkpoint_01_compat":
+        default_imu_preset_path = "config/noise/imu_ideal.yaml"
+    else:
+        default_imu_preset_path = "config/noise/imu_nominal_phone.yaml"
+    imu_noise_preset_path = str(imu_raw.get("noise_preset_path", default_imu_preset_path))
+    imu_timing_preset_path = str(imu_raw.get("timing_preset_path", "config/noise/timing_nominal.yaml"))
+    imu_write_truth_csv = bool(imu_raw.get("write_truth_csv", imu_mode != "checkpoint_01_compat"))
+
     return InteractiveSimConfig(
         config_path=_display_path(resolved_path),
         name=str(raw.get("name", "browser_game_demo")),
@@ -505,6 +550,14 @@ def load_interactive_config(config_path: str | Path, *, robot_arm_preset_path: s
             keyframes=auto_demo_keyframes,
         ),
         auto_analyze_after_recording=bool((raw.get("analysis", {}) or {}).get("auto_run_on_stop", True)),
+        imu=ImuRuntimeConfig(
+            mode=imu_mode,
+            noise_preset_path=imu_noise_preset_path,
+            timing_preset_path=imu_timing_preset_path,
+            write_truth_csv=imu_write_truth_csv,
+            imu_translation_m=_to_vec3(mount_raw.get("imu_translation_m", [0.0, 0.0, 0.0])),
+            imu_rpy_deg=_to_vec3(mount_raw.get("imu_rpy_deg", [0.0, 0.0, 0.0])),
+        ),
         tags=tags,
         observer_cameras=observer_cameras,
     )
@@ -522,6 +575,8 @@ class InteractiveCalibrationSim:
             robot_arm_preset_path=self.selected_robot_arm_preset_path,
         )
         self.primary_camera_model = self._build_primary_camera_model()
+        self._imu_timing_preset = load_timing_preset(self.config.imu.timing_preset_path)
+        self._imu_runtime = self._build_imu_runtime()
         self.current_servos_deg = np.array(self.config.robot_arm.initial_servos_deg, dtype=np.float64)
         self.target_servos_deg = np.array(self.config.robot_arm.initial_servos_deg, dtype=np.float64)
         self.time_s = 0.0
@@ -533,12 +588,16 @@ class InteractiveCalibrationSim:
         self._recording_frame_index = 0
         self._recording_writer: ManagedMp4Writer | None = None
         self._imu_csv_handle: Any | None = None
+        self._imu_truth_csv_handle: Any | None = None
         self._camera_csv_handle: Any | None = None
         self._prev_tool_position: np.ndarray | None = None
         self._prev_tool_velocity = np.zeros(3, dtype=np.float64)
+        self._prev_imu_velocity = np.zeros(3, dtype=np.float64)
         self._prev_rotation_cw: np.ndarray | None = None
         self._imu_accel_body_mps2 = np.zeros(3, dtype=np.float64)
         self._imu_gyro_body_rps = np.zeros(3, dtype=np.float64)
+        self._pending_imu_measurements: list[ImuMeasurement] = []
+        self._pending_imu_truth_samples: list[dict[str, Any]] = []
         self.analysis_status = {
             "state": "idle",
             "last_started_at_utc": None,
@@ -549,6 +608,69 @@ class InteractiveCalibrationSim:
             "error": None,
         }
         self._load_runtime_assets()
+
+    def _build_imu_runtime(self) -> ImuRuntime:
+        if self.config.imu.mode == "checkpoint_01_compat":
+            preset = load_checkpoint_compat_preset(self.config.imu.noise_preset_path)
+            return checkpoint_01_compat_imu_runtime(preset)
+        return ImuRuntime(
+            preset=load_imu_noise_preset(self.config.imu.noise_preset_path),
+            compat_single_sample=False,
+        )
+
+    def _imu_pose_from_camera_pose(self, camera_pose: CameraPose) -> CameraPose:
+        rotation_ci = _rotation_matrix_xyz_deg(self.config.imu.imu_rpy_deg)
+        imu_position_world, imu_rotation_world = imu_pose_from_camera_pose(
+            camera_position_world_m=camera_pose.position_m,
+            camera_rotation_wc=camera_pose.rotation_cw,
+            imu_translation_camera_m=self.config.imu.imu_translation_m,
+            rotation_ci=rotation_ci,
+        )
+        return CameraPose(position_m=imu_position_world, rotation_cw=imu_rotation_world)
+
+    def _imu_convention_summary(self) -> dict[str, str]:
+        return describe_imu_measurement_convention(
+            compat_single_sample=bool(self._imu_runtime.scheduler.compat_single_sample),
+            read_gravity=bool(self._imu_runtime.preset.read_gravity),
+        )
+
+    def _build_imu_truth_sample(
+        self,
+        *,
+        sample_time_s: float,
+        start_pose: CameraPose,
+        end_pose: CameraPose,
+        start_velocity_world_mps: np.ndarray,
+        end_velocity_world_mps: np.ndarray,
+        alpha: float,
+        delta_t_s: float,
+    ) -> ImuTruthSample:
+        alpha = float(np.clip(alpha, 0.0, 1.0))
+        start_imu_pose = self._imu_pose_from_camera_pose(start_pose)
+        end_imu_pose = self._imu_pose_from_camera_pose(end_pose)
+        start_position = np.asarray(start_imu_pose.position_m, dtype=np.float64).reshape(3)
+        end_position = np.asarray(end_imu_pose.position_m, dtype=np.float64).reshape(3)
+        relative_rotation = start_imu_pose.rotation_cw.T @ end_imu_pose.rotation_cw
+        relative_rvec, _ = cv2.Rodrigues(relative_rotation)
+        interpolated_rotation = start_imu_pose.rotation_cw @ cv2.Rodrigues((alpha * relative_rvec).reshape(3, 1))[0]
+        start_velocity = np.asarray(start_velocity_world_mps, dtype=np.float64).reshape(3)
+        end_velocity = np.asarray(end_velocity_world_mps, dtype=np.float64).reshape(3)
+        acceleration_world = (end_velocity - start_velocity) / max(float(delta_t_s), 1e-9)
+        accel_body = accelerometer_specific_force_body(
+            rotation_wi=interpolated_rotation,
+            acceleration_world_mps2=acceleration_world,
+            gravity_world_mps2=self._imu_runtime.preset.gravity_mps2,
+        )
+        gyro_body = gyroscope_measurement_body(
+            start_rotation_wi=start_imu_pose.rotation_cw,
+            end_rotation_wi=end_imu_pose.rotation_cw,
+            delta_time_s=delta_t_s,
+        )
+        return ImuTruthSample(
+            sim_time_s=float(sample_time_s),
+            accel_body_mps2=np.asarray(accel_body, dtype=np.float64).reshape(3),
+            gyro_body_rps=np.asarray(gyro_body, dtype=np.float64).reshape(3),
+        )
 
     def catalog_summary(self) -> dict[str, Any]:
         return {
@@ -578,6 +700,7 @@ class InteractiveCalibrationSim:
             robot_arm_preset_path=self.selected_robot_arm_preset_path,
         )
         self.primary_camera_model = self._build_primary_camera_model()
+        self._imu_timing_preset = load_timing_preset(self.config.imu.timing_preset_path)
         self.current_servos_deg = np.array(self.config.robot_arm.initial_servos_deg, dtype=np.float64)
         self.target_servos_deg = np.array(self.config.robot_arm.initial_servos_deg, dtype=np.float64)
         self.time_s = 0.0
@@ -585,9 +708,13 @@ class InteractiveCalibrationSim:
         self.auto_demo_enabled = self.config.auto_demo.enabled_by_default
         self._prev_tool_position = None
         self._prev_tool_velocity = np.zeros(3, dtype=np.float64)
+        self._prev_imu_velocity = np.zeros(3, dtype=np.float64)
         self._prev_rotation_cw = None
         self._imu_accel_body_mps2 = np.zeros(3, dtype=np.float64)
         self._imu_gyro_body_rps = np.zeros(3, dtype=np.float64)
+        self._imu_runtime = self._build_imu_runtime()
+        self._pending_imu_measurements = []
+        self._pending_imu_truth_samples = []
         self.recording_enabled = False
         self.active_run_dir = None
         self._recording_frame_index = 0
@@ -602,6 +729,7 @@ class InteractiveCalibrationSim:
             robot_arm_preset_path=self.selected_robot_arm_preset_path,
         )
         self.primary_camera_model = self._build_primary_camera_model()
+        self._imu_timing_preset = load_timing_preset(self.config.imu.timing_preset_path)
         self.current_servos_deg = np.array(self.config.robot_arm.initial_servos_deg, dtype=np.float64)
         self.target_servos_deg = np.array(self.config.robot_arm.initial_servos_deg, dtype=np.float64)
         self.time_s = 0.0
@@ -609,9 +737,13 @@ class InteractiveCalibrationSim:
         self.auto_demo_enabled = self.config.auto_demo.enabled_by_default
         self._prev_tool_position = None
         self._prev_tool_velocity = np.zeros(3, dtype=np.float64)
+        self._prev_imu_velocity = np.zeros(3, dtype=np.float64)
         self._prev_rotation_cw = None
         self._imu_accel_body_mps2 = np.zeros(3, dtype=np.float64)
         self._imu_gyro_body_rps = np.zeros(3, dtype=np.float64)
+        self._imu_runtime = self._build_imu_runtime()
+        self._pending_imu_measurements = []
+        self._pending_imu_truth_samples = []
         self.recording_enabled = False
         self.active_run_dir = None
         self._recording_frame_index = 0
@@ -631,19 +763,28 @@ class InteractiveCalibrationSim:
         if enabled and not self.recording_enabled:
             self.active_run_dir = self._create_run_dir()
             self.last_run_dir = self.active_run_dir
+            imu_convention = self._imu_convention_summary()
             metadata = {
+                "schema_version": 2,
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
                 "config": self.config.summary(),
                 "camera_model": self.primary_camera_model.summary() if self.primary_camera_model else None,
+                "imu_runtime": self._imu_runtime.preset.summary(),
+                "imu_timing": self._imu_timing_preset.summary(),
+                **imu_convention,
                 "recording": {
                     "video_file": "phone_raw.mp4",
                     "samples_file": "samples.jsonl",
                     "imu_file": "imu.csv",
+                    "imu_truth_file": "imu_truth.csv" if self.config.imu.write_truth_csv else None,
                     "camera_file": "camera_gt.csv",
                     "raw_frames_are_distorted": bool(
                         self.primary_camera_model and self.primary_camera_model.apply_lens_distortion_in_render
                     ),
                     "frame_rate_hz": float(self.config.stream_fps),
+                    "imu_mode": self.config.imu.mode,
+                    "imu_packet_mode": "async" if not self._imu_runtime.scheduler.compat_single_sample else "compat",
+                    **imu_convention,
                 },
             }
             (self.active_run_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
@@ -667,7 +808,17 @@ class InteractiveCalibrationSim:
             frame_size=(width, height),
         )
         self._imu_csv_handle = (self.active_run_dir / "imu.csv").open("w", encoding="utf-8")
-        self._imu_csv_handle.write("tick_index,sim_time_s,ax_mps2,ay_mps2,az_mps2,gx_rps,gy_rps,gz_rps\n")
+        self._imu_csv_handle.write(
+            "tick_index,sample_index,sim_time_s,dt_s,ax_mps2,ay_mps2,az_mps2,gx_rps,gy_rps,gz_rps,is_checkpoint_compat\n"
+        )
+        if self.config.imu.write_truth_csv:
+            self._imu_truth_csv_handle = (self.active_run_dir / "imu_truth.csv").open("w", encoding="utf-8")
+            self._imu_truth_csv_handle.write(
+                "tick_index,sample_index,sim_time_s,dt_s,ax_truth_mps2,ay_truth_mps2,az_truth_mps2,"
+                "gx_truth_rps,gy_truth_rps,gz_truth_rps\n"
+            )
+        else:
+            self._imu_truth_csv_handle = None
         self._camera_csv_handle = (self.active_run_dir / "camera_gt.csv").open("w", encoding="utf-8")
         self._camera_csv_handle.write(
             "tick_index,sim_time_s,cx_world_m,cy_world_m,cz_world_m,vx_world_mps,vy_world_mps,vz_world_mps,"
@@ -682,6 +833,9 @@ class InteractiveCalibrationSim:
         if self._imu_csv_handle is not None:
             self._imu_csv_handle.close()
             self._imu_csv_handle = None
+        if getattr(self, "_imu_truth_csv_handle", None) is not None:
+            self._imu_truth_csv_handle.close()
+            self._imu_truth_csv_handle = None
         if self._camera_csv_handle is not None:
             self._camera_csv_handle.close()
             self._camera_csv_handle = None
@@ -744,6 +898,11 @@ class InteractiveCalibrationSim:
 
     def step(self, dt_s: float) -> None:
         dt_s = float(np.clip(dt_s, 1.0 / 240.0, 0.2))
+        start_time_s = float(self.time_s)
+        start_servos_deg = self.current_servos_deg.copy()
+        start_pose = self._phone_camera_pose_for_servos(start_servos_deg)
+        start_imu_pose = self._imu_pose_from_camera_pose(start_pose)
+        start_imu_velocity_world_mps = self._prev_imu_velocity.copy()
         if self.auto_demo_enabled:
             self.target_servos_deg = self._demo_servo_targets(self.time_s + dt_s)
         max_step = np.asarray(self.config.robot_arm.servo_speed_deg_s, dtype=np.float64) * dt_s
@@ -754,26 +913,58 @@ class InteractiveCalibrationSim:
 
         tool_pose = self._phone_camera_pose()
         tool_position = tool_pose.position_m
+        current_velocity = (tool_position - start_pose.position_m) / max(dt_s, 1e-9)
+        end_imu_pose = self._imu_pose_from_camera_pose(tool_pose)
+        current_imu_velocity = (end_imu_pose.position_m - start_imu_pose.position_m) / max(dt_s, 1e-9)
 
-        if self._prev_tool_position is not None:
-            velocity = (tool_position - self._prev_tool_position) / dt_s
-            acceleration_world = (velocity - self._prev_tool_velocity) / dt_s
+        truth_records: list[dict[str, Any]] = []
+
+        def truth_fn(sample_time_s: float, sample_dt_s: float) -> ImuTruthSample:
+            alpha = 1.0 if dt_s <= 1e-12 else float(np.clip((sample_time_s - start_time_s) / dt_s, 0.0, 1.0))
+            sample_index = len(truth_records)
+            sample = self._build_imu_truth_sample(
+                sample_time_s=sample_time_s,
+                start_pose=start_pose,
+                end_pose=tool_pose,
+                start_velocity_world_mps=start_imu_velocity_world_mps,
+                end_velocity_world_mps=current_imu_velocity,
+                alpha=alpha,
+                delta_t_s=dt_s,
+            )
+            truth_records.append(
+                {
+                    "sample_index": int(sample_index),
+                    "sim_time_s": float(sample.sim_time_s),
+                    "dt_s": float(sample_dt_s),
+                    "accel_body_mps2": [float(value) for value in sample.accel_body_mps2.tolist()],
+                    "gyro_body_rps": [float(value) for value in sample.gyro_body_rps.tolist()],
+                }
+            )
+            return sample
+
+        measurements = self._imu_runtime.advance_to(
+            self.time_s,
+            truth_fn,
+            frame_dt_s=dt_s,
+            frame_tick_index=self.tick_index,
+        )
+        self._pending_imu_measurements = measurements
+        self._pending_imu_truth_samples = truth_records
+        if measurements:
+            last_measurement = measurements[-1]
+            self._imu_accel_body_mps2 = np.asarray(last_measurement.accel_body_mps2, dtype=np.float64).reshape(3)
+            self._imu_gyro_body_rps = np.asarray(last_measurement.gyro_body_rps, dtype=np.float64).reshape(3)
         else:
-            velocity = np.zeros(3, dtype=np.float64)
-            acceleration_world = np.zeros(3, dtype=np.float64)
-
-        gravity_world = np.array([0.0, 0.0, -9.81], dtype=np.float64)
-        self._imu_accel_body_mps2 = tool_pose.rotation_cw.T @ (acceleration_world - gravity_world)
-
-        if self._prev_rotation_cw is not None:
-            relative_rotation = self._prev_rotation_cw.T @ tool_pose.rotation_cw
+            gravity_world = np.array([0.0, 0.0, -9.81], dtype=np.float64)
+            acceleration_world = (current_imu_velocity - start_imu_velocity_world_mps) / max(dt_s, 1e-9)
+            self._imu_accel_body_mps2 = end_imu_pose.rotation_cw.T @ (acceleration_world - gravity_world)
+            relative_rotation = start_imu_pose.rotation_cw.T @ end_imu_pose.rotation_cw
             rvec, _ = cv2.Rodrigues(relative_rotation)
-            self._imu_gyro_body_rps = rvec.reshape(3) / dt_s
-        else:
-            self._imu_gyro_body_rps = np.zeros(3, dtype=np.float64)
+            self._imu_gyro_body_rps = rvec.reshape(3) / max(dt_s, 1e-9)
 
         self._prev_tool_position = tool_position.copy()
-        self._prev_tool_velocity = velocity
+        self._prev_tool_velocity = current_velocity
+        self._prev_imu_velocity = current_imu_velocity
         self._prev_rotation_cw = tool_pose.rotation_cw.copy()
 
     def _demo_servo_targets(self, time_s: float) -> np.ndarray:
@@ -934,6 +1125,7 @@ class InteractiveCalibrationSim:
             "imu": {
                 "accel_mps2": [round(float(value), 3) for value in self._imu_accel_body_mps2.tolist()],
                 "gyro_rps": [round(float(value), 4) for value in self._imu_gyro_body_rps.tolist()],
+                **self._imu_convention_summary(),
             },
             "phone_view": phone_payload,
             "observer_views": observer_frames,
@@ -992,13 +1184,25 @@ class InteractiveCalibrationSim:
             files["observer_views"] = [observer["name"] for observer in observer_frames]
 
         if self._imu_csv_handle is not None:
-            accel = self._imu_accel_body_mps2
-            gyro = self._imu_gyro_body_rps
-            self._imu_csv_handle.write(
-                f"{self.tick_index},{self.time_s:.9f},"
-                f"{accel[0]:.9f},{accel[1]:.9f},{accel[2]:.9f},"
-                f"{gyro[0]:.9f},{gyro[1]:.9f},{gyro[2]:.9f}\n"
-            )
+            for measurement in self._pending_imu_measurements:
+                accel = np.asarray(measurement.accel_body_mps2, dtype=np.float64).reshape(3)
+                gyro = np.asarray(measurement.gyro_body_rps, dtype=np.float64).reshape(3)
+                self._imu_csv_handle.write(
+                    f"{measurement.tick_index},{measurement.sample_index},{measurement.sim_time_s:.9f},{measurement.dt_s:.9f},"
+                    f"{accel[0]:.9f},{accel[1]:.9f},{accel[2]:.9f},"
+                    f"{gyro[0]:.9f},{gyro[1]:.9f},{gyro[2]:.9f},{int(measurement.is_checkpoint_compat)}\n"
+                )
+        if self._imu_truth_csv_handle is not None:
+            for index, truth_row in enumerate(self._pending_imu_truth_samples):
+                accel = np.asarray(truth_row["accel_body_mps2"], dtype=np.float64).reshape(3)
+                gyro = np.asarray(truth_row["gyro_body_rps"], dtype=np.float64).reshape(3)
+                sample_index = int(truth_row.get("sample_index", index))
+                dt_s = float(truth_row.get("dt_s", 0.0))
+                self._imu_truth_csv_handle.write(
+                    f"{self.tick_index},{sample_index},{truth_row['sim_time_s']:.9f},{dt_s:.9f},"
+                    f"{accel[0]:.9f},{accel[1]:.9f},{accel[2]:.9f},"
+                    f"{gyro[0]:.9f},{gyro[1]:.9f},{gyro[2]:.9f}\n"
+                )
 
         if self._camera_csv_handle is not None:
             camera_world_pose = snapshot["phone_view"]["ground_truth"]["camera_world_pose"]
@@ -1024,7 +1228,11 @@ class InteractiveCalibrationSim:
             "imu": {
                 "accel_mps2": [float(value) for value in self._imu_accel_body_mps2.tolist()],
                 "gyro_rps": [float(value) for value in self._imu_gyro_body_rps.tolist()],
+                "packet_count": len(self._pending_imu_measurements),
+                "mode": self.config.imu.mode,
             },
+            "imu_packets": [measurement.as_row() for measurement in self._pending_imu_measurements],
+            "imu_truth_packets": list(self._pending_imu_truth_samples),
             "detections": snapshot["phone_view"]["detections"],
             "camera_model": snapshot["phone_view"].get("camera_model"),
             "camera_pose_estimation": snapshot["phone_view"].get("camera_pose_estimation", []),
@@ -1033,6 +1241,8 @@ class InteractiveCalibrationSim:
         }
         with (self.active_run_dir / "samples.jsonl").open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(log_entry) + "\n")
+        self._pending_imu_measurements = []
+        self._pending_imu_truth_samples = []
 
     def _ground_truth_payload(self, phone_pose: CameraPose) -> dict[str, Any]:
         camera_world_pose = {
@@ -1149,18 +1359,26 @@ class InteractiveCalibrationSim:
         return [base, shoulder, elbow, wrist, tool]
 
     def _phone_camera_pose(self) -> CameraPose:
-        tool_position = self._joint_chain_world()[-1]
-        look_at_point = np.asarray(self.config.scene_look_at_m, dtype=np.float64)
-        look_at_point = look_at_point + np.array(
-            [
-                0.20 * math.sin(math.radians(float(self.current_servos_deg[0]))),
-                0.0,
-                0.10 * math.sin(math.radians(float(self.current_servos_deg[2]))),
-            ],
-            dtype=np.float64,
-        )
-        rotation_cw = _look_at_rotation(tool_position, look_at_point)
-        return CameraPose(position_m=tool_position, rotation_cw=rotation_cw)
+        return self._phone_camera_pose_for_servos(self.current_servos_deg)
+
+    def _phone_camera_pose_for_servos(self, servos_deg: Sequence[float]) -> CameraPose:
+        previous_servos = self.current_servos_deg
+        try:
+            self.current_servos_deg = np.asarray(servos_deg, dtype=np.float64).reshape(3).copy()
+            tool_position = self._joint_chain_world()[-1]
+            look_at_point = np.asarray(self.config.scene_look_at_m, dtype=np.float64)
+            look_at_point = look_at_point + np.array(
+                [
+                    0.20 * math.sin(math.radians(float(self.current_servos_deg[0]))),
+                    0.0,
+                    0.10 * math.sin(math.radians(float(self.current_servos_deg[2]))),
+                ],
+                dtype=np.float64,
+            )
+            rotation_cw = _look_at_rotation(tool_position, look_at_point)
+            return CameraPose(position_m=tool_position, rotation_cw=rotation_cw)
+        finally:
+            self.current_servos_deg = previous_servos
 
     def _primary_intrinsics(self) -> dict[str, float]:
         if self.primary_camera_model is not None:

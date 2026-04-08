@@ -1,0 +1,7 @@
+name: timing_nominal
+physics_rate_hz: 240.0
+camera_rate_hz: 12.0
+imu_rate_hz: 58.236
+checkpoint_compat_rate_hz: 12.0
+camera_jitter_std_s: 0.0
+imu_jitter_std_s: 0.0

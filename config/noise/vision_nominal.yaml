@@ -1,0 +1,6 @@
+name: vision_nominal
+corner_noise_std_px: 0.75
+dropout_probability: 0.05
+visibility_failure_probability: 0.03
+tag_quality_sigma_scale: 1.0
+outlier_probability: 0.01

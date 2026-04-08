@@ -1,0 +1,13 @@
+name: imu_nominal_phone
+mode: async_realism
+rate_hz: 58.236
+read_gravity: true
+accel_noise_std_mps2: [0.0047856453, 0.0047856453, 0.0047856453]
+gyro_noise_std_rps: [0.0012217305, 0.0012217305, 0.0012217305]
+accel_bias_initial_mps2: [0.0, 0.0, 0.0]
+gyro_bias_initial_rps: [0.0, 0.0, 0.0]
+accel_bias_walk_std_mps2_per_sqrt_s: [0.00008, 0.00008, 0.00008]
+gyro_bias_walk_std_rps_per_sqrt_s: [0.000015, 0.000015, 0.000015]
+gravity_mps2: [0.0, 0.0, -9.81]
+sample_jitter_std_s: 0.0005
+drop_probability: 0.0

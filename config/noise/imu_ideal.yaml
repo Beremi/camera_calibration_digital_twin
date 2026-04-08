@@ -1,0 +1,13 @@
+name: imu_ideal
+mode: checkpoint_01_compat
+rate_hz: 58.236
+read_gravity: true
+accel_noise_std_mps2: [0.0, 0.0, 0.0]
+gyro_noise_std_rps: [0.0, 0.0, 0.0]
+accel_bias_initial_mps2: [0.0, 0.0, 0.0]
+gyro_bias_initial_rps: [0.0, 0.0, 0.0]
+accel_bias_walk_std_mps2_per_sqrt_s: [0.0, 0.0, 0.0]
+gyro_bias_walk_std_rps_per_sqrt_s: [0.0, 0.0, 0.0]
+gravity_mps2: [0.0, 0.0, -9.81]
+sample_jitter_std_s: 0.0
+drop_probability: 0.0

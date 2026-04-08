@@ -19,6 +19,7 @@ import cv2
 import numpy as np
 
 from calib_sim.common.video import ManagedMp4Writer
+from calib_sim.estimation.reporting import run_batch_estimation_analysis
 from calib_sim.interactive.camera_model import PhoneCameraModel, load_phone_camera_model
 from calib_sim.tag_service.detector import AprilTag36h11Detector
 
@@ -4739,5 +4740,24 @@ def analyze_recording_run(run_dir: str | Path) -> dict[str, Any]:
         )
         insert_index = report_lines.index("## Visual Diagnostics")
         report_lines[insert_index:insert_index] = per_tag_section_lines + [""]
+    try:
+        batch_analysis = run_batch_estimation_analysis(resolved_run_dir)
+    except Exception as exc:
+        summary["batch_estimation_error"] = str(exc)
+        report_lines.extend(
+            [
+                "",
+                "## Batch Estimation",
+                "",
+                f"Batch estimation failed during report generation: `{exc}`",
+                "",
+            ]
+        )
+    else:
+        summary.update(batch_analysis["summary_updates"])
+        summary["artifacts"].update(batch_analysis["artifact_updates"])
+        summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        report_lines.extend(batch_analysis["report_appendix_lines"])
+
     report_path.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
     return summary

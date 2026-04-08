@@ -4,6 +4,7 @@
 
 __pycache__/
 *.py[cod]
+*.egg-info/
 
 output/interactive_runs/
 *.finalizing.mp4
@@ -21,5 +22,7 @@ docs/**/*.out
 docs/**/*.run.xml
 docs/**/*.synctex.gz
 docs/**/*.toc
+
+EXPERT_HANDOFF_CHECKPOINT_01.md
 
 .DS_Store

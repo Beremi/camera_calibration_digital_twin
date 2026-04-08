@@ -1,0 +1,130 @@
+name: tabletop_grab_challenge_vi_headline
+label: Tabletop Grab VI Headline Benchmark
+device_config_path: config/device/pixel_9a_phone.yaml
+camera_model_toml_path: config/camera/pixel_9a_main.toml
+output_dir: output/interactive_runs
+stream_fps: 12.0
+primary_camera:
+  width: 960
+  height: 540
+  fov_deg: 72.0
+scene:
+  wall_y_m: 0.0
+  wall_width_m: 3.2
+  wall_height_m: 2.1
+  look_at_m: [0.04, 0.30, 0.88]
+  boxes:
+    - name: table_top
+      center_m: [0.18, 0.60, 0.36]
+      size_m: [1.08, 0.72, 0.72]
+      color_bgr: [92, 118, 156]
+      edge_color_bgr: [224, 232, 240]
+    - name: target_block
+      center_m: [0.30, 0.56, 0.75]
+      size_m: [0.11, 0.11, 0.11]
+      color_bgr: [74, 134, 235]
+      edge_color_bgr: [244, 246, 250]
+    - name: tray
+      center_m: [-0.20, 0.64, 0.74]
+      size_m: [0.20, 0.14, 0.03]
+      color_bgr: [72, 88, 110]
+      edge_color_bgr: [224, 232, 240]
+    - name: pickup_box
+      center_m: [0.00, 0.64, 0.79]
+      size_m: [0.11, 0.11, 0.11]
+      color_bgr: [44, 170, 232]
+      edge_color_bgr: [244, 246, 250]
+robot:
+  preset_path: config/interactive/robot_arms/long_reach_tabletop.yaml
+controls:
+  initial_servos_deg: [-40.0, 58.0, -52.0]
+auto_demo:
+  enabled_by_default: true
+  mode: keyframes
+  loop_duration_s: 20.0
+  keyframes:
+    - time_s: 0.0
+      servos_deg: [-40.0, 58.0, -52.0]
+    - time_s: 2.5
+      servos_deg: [-22.0, 80.0, -82.0]
+    - time_s: 5.0
+      servos_deg: [10.0, 52.0, -26.0]
+    - time_s: 7.5
+      servos_deg: [28.0, 74.0, -74.0]
+    - time_s: 10.0
+      servos_deg: [2.0, 30.0, -10.0]
+    - time_s: 12.5
+      servos_deg: [-28.0, 82.0, -82.0]
+    - time_s: 15.0
+      servos_deg: [-48.0, 64.0, -40.0]
+    - time_s: 17.5
+      servos_deg: [18.0, 72.0, -70.0]
+    - time_s: 20.0
+      servos_deg: [-40.0, 58.0, -52.0]
+analysis:
+  auto_run_on_stop: true
+imu:
+  mode: async_realism
+  noise_preset_path: config/noise/imu_async_ideal.yaml
+  timing_preset_path: config/noise/timing_vi_headline.yaml
+  write_truth_csv: true
+tags:
+  - tag_id: 0
+    family: 36h11
+    size_m: 0.10
+    position_m: [-0.92, 0.0, 0.84]
+    mount: wall
+  - tag_id: 7
+    family: 36h11
+    size_m: 0.10
+    position_m: [-0.45, 0.0, 1.44]
+    mount: wall
+  - tag_id: 19
+    family: 36h11
+    size_m: 0.10
+    position_m: [-0.10, 0.0, 0.92]
+    mount: wall
+  - tag_id: 42
+    family: 36h11
+    size_m: 0.10
+    position_m: [0.38, 0.0, 1.22]
+    mount: wall
+  - tag_id: 88
+    family: 36h11
+    size_m: 0.10
+    position_m: [0.82, 0.0, 0.88]
+    mount: wall
+  - tag_id: 123
+    family: 36h11
+    size_m: 0.10
+    position_m: [0.92, 0.0, 1.54]
+    mount: wall
+  - tag_id: 155
+    family: 36h11
+    size_m: 0.06
+    position_m: [0.30, 0.56, 0.806]
+    mount: top
+  - tag_id: 201
+    family: 36h11
+    size_m: 0.06
+    position_m: [0.00, 0.64, 0.846]
+    mount: top
+observer_cameras:
+  - name: room_wide
+    position_m: [1.80, 2.90, 1.78]
+    look_at_m: [0.04, 0.56, 0.82]
+    width: 640
+    height: 360
+    fov_deg: 54.0
+  - name: side_overwatch
+    position_m: [-2.25, 1.55, 1.42]
+    look_at_m: [0.04, 0.54, 0.82]
+    width: 640
+    height: 360
+    fov_deg: 50.0
+  - name: top_oblique
+    position_m: [0.20, 2.25, 2.18]
+    look_at_m: [0.04, 0.30, 0.88]
+    width: 640
+    height: 360
+    fov_deg: 46.0

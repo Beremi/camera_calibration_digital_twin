@@ -9,8 +9,9 @@ import cv2
 import numpy as np
 import yaml
 
+from calib_sim.common.inertial import accelerometer_specific_force_body, gyroscope_measurement_body
 from calib_sim.interactive.analysis import _compiled_objective_functions, _estimate_pose_newton, _state_diagnostics
-from calib_sim.interactive.sim import InteractiveCalibrationSim, available_robot_arm_presets, available_scene_presets
+from calib_sim.interactive.sim import CameraPose, InteractiveCalibrationSim, available_robot_arm_presets, available_scene_presets
 
 
 def test_interactive_snapshot_contains_live_detections() -> None:
@@ -138,6 +139,68 @@ def test_scene_and_robot_arm_presets_can_be_switched() -> None:
     assert len(snapshot["observer_views"]) == 3
 
 
+def test_headline_vi_scene_preset_loads_with_async_imu() -> None:
+    sim = InteractiveCalibrationSim("config/interactive/tabletop_grab_challenge_vi_headline.yaml")
+    snapshot = sim.render_snapshot()
+
+    assert snapshot["config"]["name"] == "tabletop_grab_challenge_vi_headline"
+    assert snapshot["config"]["imu"]["mode"] == "async_realism"
+    assert snapshot["imu"]["imu_measurement_convention"] == "body_specific_force_plus_bias"
+    assert snapshot["imu"]["imu_timestamp_semantics"] == "independent_sim_time"
+    assert snapshot["imu"]["imu_sampling_mode"] == "independent_fixed_rate"
+
+
+def test_imu_truth_sample_uses_specific_force_convention() -> None:
+    sim = InteractiveCalibrationSim("config/interactive/tabletop_grab_challenge_vi_headline.yaml")
+    stationary_pose = CameraPose(position_m=np.zeros(3, dtype=np.float64), rotation_cw=np.eye(3, dtype=np.float64))
+    sample = sim._build_imu_truth_sample(
+        sample_time_s=0.1,
+        start_pose=stationary_pose,
+        end_pose=stationary_pose,
+        start_velocity_world_mps=np.zeros(3, dtype=np.float64),
+        end_velocity_world_mps=np.zeros(3, dtype=np.float64),
+        alpha=1.0,
+        delta_t_s=0.1,
+    )
+
+    assert sample.sim_time_s == 0.1
+    assert np.allclose(sample.gyro_body_rps, 0.0, atol=1e-12)
+    assert np.allclose(sample.accel_body_mps2, [0.0, 0.0, 9.81], atol=1e-9)
+
+
+def test_dynamic_imu_truth_sample_matches_shared_inertial_model() -> None:
+    sim = InteractiveCalibrationSim("config/interactive/tabletop_grab_challenge_vi_headline.yaml")
+    start_pose = CameraPose(position_m=np.zeros(3, dtype=np.float64), rotation_cw=np.eye(3, dtype=np.float64))
+    end_pose = CameraPose(position_m=np.array([0.0, 0.0, 0.02], dtype=np.float64), rotation_cw=np.eye(3, dtype=np.float64))
+    start_velocity_world_mps = np.array([0.0, 0.0, 0.0], dtype=np.float64)
+    end_velocity_world_mps = np.array([0.0, 0.0, 0.2], dtype=np.float64)
+    sample = sim._build_imu_truth_sample(
+        sample_time_s=0.1,
+        start_pose=start_pose,
+        end_pose=end_pose,
+        start_velocity_world_mps=start_velocity_world_mps,
+        end_velocity_world_mps=end_velocity_world_mps,
+        alpha=1.0,
+        delta_t_s=0.1,
+    )
+
+    start_imu_pose = sim._imu_pose_from_camera_pose(start_pose)
+    end_imu_pose = sim._imu_pose_from_camera_pose(end_pose)
+    expected_accel_body = accelerometer_specific_force_body(
+        rotation_wi=end_imu_pose.rotation_cw,
+        acceleration_world_mps2=(end_velocity_world_mps - start_velocity_world_mps) / 0.1,
+        gravity_world_mps2=sim._imu_runtime.preset.gravity_mps2,
+    )
+    expected_gyro_body = gyroscope_measurement_body(
+        start_rotation_wi=start_imu_pose.rotation_cw,
+        end_rotation_wi=end_imu_pose.rotation_cw,
+        delta_time_s=0.1,
+    )
+
+    assert np.allclose(sample.accel_body_mps2, expected_accel_body, atol=1e-12)
+    assert np.allclose(sample.gyro_body_rps, expected_gyro_body, atol=1e-12)
+
+
 def test_previous_frame_seed_path_still_reports_camera_obscura_reference() -> None:
     """Warm-started solves should work without requiring obscura to be a live candidate."""
     sim = InteractiveCalibrationSim("config/interactive/browser_game_demo.yaml")
@@ -204,6 +267,46 @@ def test_interactive_recording_dump_writes_files(tmp_path: Path) -> None:
     samples = (sim.active_run_dir / "samples.jsonl").read_text(encoding="utf-8")
     assert '"camera_pose_estimation"' in samples
     assert '"ground_truth"' in samples
+
+
+def test_async_imu_mode_emits_multiple_packets_and_truth_csv(tmp_path: Path) -> None:
+    """Async IMU mode should decouple packet rate from rendered frames."""
+    template_path = Path("config/interactive/browser_game_demo.yaml")
+    config = yaml.safe_load(template_path.read_text())
+    config["output_dir"] = str(tmp_path / "runs")
+    config["analysis"] = {"auto_run_on_stop": False}
+    config["imu"] = {
+        "mode": "async_realism",
+        "noise_preset_path": "config/noise/imu_nominal_phone.yaml",
+        "timing_preset_path": "config/noise/timing_nominal.yaml",
+        "write_truth_csv": True,
+    }
+
+    config_path = tmp_path / "interactive_async_imu.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    sim = InteractiveCalibrationSim(config_path)
+    sim.set_recording(True)
+    sim.step(0.2)
+
+    assert sim._imu_runtime.scheduler.compat_single_sample is False
+    assert len(sim._pending_imu_measurements) > 1
+    assert len(sim._pending_imu_truth_samples) >= len(sim._pending_imu_measurements)
+    assert np.isfinite(sim._imu_accel_body_mps2).all()
+    assert np.isfinite(sim._imu_gyro_body_rps).all()
+
+    sim.render_snapshot()
+    assert sim.active_run_dir is not None
+    assert (sim.active_run_dir / "imu.csv").exists()
+    assert (sim.active_run_dir / "imu_truth.csv").exists()
+    metadata = json.loads((sim.active_run_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["imu_measurement_convention"] == "body_specific_force_plus_bias"
+    assert metadata["imu_timestamp_semantics"] == "independent_sim_time"
+    assert metadata["imu_gravity_handling"] == "gravity_removed_from_specific_force"
+    assert metadata["imu_sampling_mode"] == "independent_fixed_rate"
+    samples = (sim.active_run_dir / "samples.jsonl").read_text(encoding="utf-8")
+    assert '"imu_packets"' in samples
+    assert '"imu_truth_packets"' in samples
 
 
 def test_interactive_recording_stop_runs_analysis(tmp_path: Path) -> None:

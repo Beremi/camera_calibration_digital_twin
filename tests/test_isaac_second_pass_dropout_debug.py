@@ -75,6 +75,8 @@ def test_dropout_debug_runner_accepts_split_process_and_suppression_gate_overrid
             "8.0",
             "--suppression-imu-specific-force-gate-mps2",
             "10.0",
+            "--suppression-propagation-mode",
+            "gyro_only",
             "--dry-run",
         ],
         cwd=str(repo_root),
@@ -93,6 +95,7 @@ def test_dropout_debug_runner_accepts_split_process_and_suppression_gate_overrid
         assert "--gyro-process-covariance-scale" in command
         assert "--accel-process-covariance-scale" in command
         assert "--suppression-imu-specific-force-gate-mps2" in command
+        assert "--suppression-propagation-mode" in command
 
 
 def test_dropout_debug_artifacts_and_bundle_write_expected_schema(tmp_path: Path) -> None:
@@ -105,6 +108,9 @@ def test_dropout_debug_artifacts_and_bundle_write_expected_schema(tmp_path: Path
         assert Path(payload["frames_path"]).exists()
         assert Path(payload["events_path"]).exists()
         assert (run_dir / "analysis" / "dropout_debug_summary.json").exists()
+        assert (run_dir / "analysis" / "suppression_window_summary.csv").exists()
+        assert (run_dir / "analysis" / "suppression_window_summary.json").exists()
+        assert (run_dir / "analysis" / "suppression_window_note.md").exists()
         for figure_name in (
             "dropout_pose_error_timeline.png",
             "dropout_velocity_norm_timeline.png",
@@ -123,6 +129,7 @@ def test_dropout_debug_artifacts_and_bundle_write_expected_schema(tmp_path: Path
         assert "position_error_norm_m" in frame_headers
         assert "covariance_trace" in frame_headers
         assert "reason" in event_headers
+        assert "anchor_nis" in event_headers
         assert "relocalization_correction_norm_m" in event_headers
 
     bundle = build_second_pass_dropout_debug_bundle(output_root, docs_path=docs_path)

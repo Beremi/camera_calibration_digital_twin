@@ -19,6 +19,7 @@ filter:
   allow_anchor_reacquisition_after_first_lock: true
   disable_imu_prediction_while_anchor_suppressed: false
   suppression_imu_specific_force_gate_mps2: 20.0
+  suppression_propagation_mode: full_imu
   anchor_reacquisition_max_innovation_norm: null
   anchor_reacquisition_max_nis: null
   dropout_post_reacquisition_covariance_scale: null

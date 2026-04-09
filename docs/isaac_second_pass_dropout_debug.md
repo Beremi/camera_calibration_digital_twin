@@ -28,3 +28,43 @@ This bundle tracks the seed-007 fused intermittent-anchor blocker before the sec
   plausibility or split gyro/accel process weighting; do not reopen the draft
   suite, second-pass PDF, or polished media yet
 - do not rerun the 18-run second-pass suite or rebuild the second-pass draft PDF until at least one fused intermittent-anchor variant clears the interim blocker bar.
+
+## Validated Candidate
+
+The control bundle above remains the branch source of truth for the blocked
+baseline. A separate probe family under
+`output/isaac_runs/probes/gyro_only_gate_10_validation` has now validated one
+production-like fused suppression candidate:
+
+- `suppression_propagation_mode = gyro_only`
+- `suppression_imu_specific_force_gate_mps2 = 10.0`
+- `dropout_post_reacquisition_covariance_scale = 8.0`
+
+Validated intermittent-anchor fused runs:
+
+- seed `007`:
+  - `second_pass_dropout_debug_fused_covinfl_seed_007`
+  - mean position error: `0.03091 m`
+  - empirical 95% coverage: `88.96%`
+  - pose NEES: `10.10`
+- seed `011`:
+  - `second_pass_validation_fused_intermittent_anchor_only_seed_011_gyro_only_covinfl_gate_10`
+  - mean position error: `0.03560 m`
+  - empirical 95% coverage: `86.04%`
+  - pose NEES: `13.02`
+- seed `017`:
+  - `second_pass_validation_fused_intermittent_anchor_only_seed_017_gyro_only_covinfl_gate_10`
+  - mean position error: `0.02935 m`
+  - empirical 95% coverage: `93.75%`
+  - pose NEES: `10.42`
+
+Nominal fused follow-up for the same candidate:
+
+- `second_pass_followup_fused_nominal_anchor_only_seed_007_gyro_only_covinfl_gate_10`
+  - mean position error: `0.01278 m`
+  - empirical 95% coverage: `99.79%`
+  - pose NEES: `3.97`
+
+This means the next packet can promote the candidate into the draft lock and
+rerun the second-pass suite, but the draft suite, PDF, and presentation bundle
+should remain deferred until that rerun happens.

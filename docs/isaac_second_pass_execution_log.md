@@ -538,3 +538,242 @@ Outcome:
   - `scripts/run_isaac_anchor_vio.py --validate-config-only` now writes a run
     manifest that matches the actual overridden estimator/control config rather
     than the raw YAML defaults
+
+## 2026-04-09 Suppression-Window Propagation Stabilization
+
+- starting head: `3a4a582`
+- previous packet head: `bff0408`
+- active milestone: `suppression-window propagation stabilization for fused intermittent-anchor`
+
+### Packet implementation and probe execution
+
+21. `.venv`
+
+```bash
+python -m py_compile \
+  scripts/analyze_isaac_suppression_windows.py \
+  scripts/run_isaac_anchor_vio.py \
+  scripts/run_isaac_second_pass_dropout_debug.py \
+  src/calib_sim/isaac/estimation/online_filter.py \
+  src/calib_sim/isaac/runtime/main_loop.py \
+  src/calib_sim/isaac/logging/writer.py \
+  src/calib_sim/reporting/isaac_suppression_windows.py \
+  src/calib_sim/reporting/isaac_second_pass_dropout_debug.py \
+  tests/test_isaac_suppression_windows.py \
+  tests/test_isaac_second_pass_dropout_debug.py \
+  tests/test_isaac_second_pass_switches.py \
+  tests/test_isaac_mode_semantics.py
+pytest -q tests/test_isaac_suppression_windows.py \
+          tests/test_isaac_second_pass_dropout_debug.py \
+          tests/test_isaac_second_pass_switches.py \
+          tests/test_isaac_mode_semantics.py
+```
+
+Outcome:
+- passed
+- result: `23 passed`
+- packet additions:
+  - `scripts/analyze_isaac_suppression_windows.py`
+  - suppression-window summary artifacts under each run's `analysis/`
+  - `suppression_propagation_mode` routed through config, runner, manifest,
+    and runtime with `full_imu`, `gyro_only`, `constant_velocity`, and
+    `freeze`
+
+22. `.venv`
+
+```bash
+for run_dir in output/isaac_runs/second_pass_dropout_debug_*; do
+  python scripts/analyze_isaac_suppression_windows.py "$run_dir"
+done
+```
+
+Outcome:
+- completed on the existing six-run control bundle
+- conclusion:
+  - the blocked production fused control run remained
+    `mean_state_drift_dominant`
+  - the helper outputs are now available under each run's `analysis/` as:
+    - `suppression_window_summary.csv`
+    - `suppression_window_summary.json`
+    - `suppression_window_note.md`
+
+23. `.venv-isaac`
+
+```bash
+python scripts/run_isaac_second_pass_dropout_debug.py \
+  --headless --execute-missing \
+  --output-root output/isaac_runs/probes/gate_10 \
+  --docs-path output/isaac_runs/probes/gate_10/dropout_debug.md \
+  --suppression-imu-specific-force-gate-mps2 10.0
+```
+
+Outcome:
+- completed
+- key result:
+  - tighter suppression specific-force gating helped but did not clear the
+    production fused baseline by itself:
+    - mean position error: `0.07647 m`
+    - empirical 95% coverage: `78.96%`
+    - pose NEES: `52.70`
+- conclusion:
+  - gate tightening is a real lever, but it is not sufficient alone
+
+24. `.venv-isaac`
+
+```bash
+python scripts/run_isaac_second_pass_dropout_debug.py \
+  --headless --execute-missing \
+  --output-root output/isaac_runs/probes/gyro_only_gate_10 \
+  --docs-path output/isaac_runs/probes/gyro_only_gate_10/dropout_debug.md \
+  --suppression-imu-specific-force-gate-mps2 10.0 \
+  --suppression-propagation-mode gyro_only
+```
+
+Outcome:
+- completed
+- key result:
+  - `gyro_only` by itself remained blocked
+  - `gyro_only + dropout_post_reacquisition_covariance_scale = 8.0`
+    cleared the bar on seed `007`:
+    - mean position error: `0.03091 m`
+    - empirical 95% coverage: `88.96%`
+    - pose NEES: `10.10`
+  - `gyro_only + correction clipping` also cleared, but covariance inflation
+    was the cleaner winner candidate
+- conclusion:
+  - the packet winner should be validated as
+    `gyro_only + gate_10 + covinfl`, not `gyro_only` alone
+
+25. `.venv-isaac` + `.venv`
+
+```bash
+python scripts/run_isaac_anchor_vio.py \
+  --headless \
+  --output-root output/isaac_runs/probes/gyro_only_gate_10_validation \
+  --run-id second_pass_followup_fused_nominal_anchor_only_seed_007_gyro_only_covinfl_gate_10 \
+  --seed 7 \
+  --duration-s 8.0 \
+  --estimator-mode fused \
+  --controller-mode closed-loop \
+  --bootstrap-control-policy hold_until_first_detection \
+  --smoother-backend lightweight \
+  --vision-covariance-scale 4.0 \
+  --imu-process-covariance-scale 8.0 \
+  --post-relocalization-covariance-scale 1.0 \
+  --suppression-imu-specific-force-gate-mps2 10.0 \
+  --suppression-propagation-mode gyro_only \
+  --dropout-post-reacquisition-covariance-scale 8.0 \
+  --no-use-aux-tags-in-filter \
+  --no-use-aux-tags-in-smoother \
+  --no-use-aux-map-for-control \
+  --no-promote-global-latest
+python scripts/analyze_isaac_estimator_quality.py \
+  output/isaac_runs/probes/gyro_only_gate_10_validation/second_pass_followup_fused_nominal_anchor_only_seed_007_gyro_only_covinfl_gate_10
+python scripts/run_isaac_anchor_vio.py \
+  --headless \
+  --visibility-config config/isaac/visibility/anchor_dropout_nominal.yaml \
+  --output-root output/isaac_runs/probes/gyro_only_gate_10_validation \
+  --run-id second_pass_validation_fused_intermittent_anchor_only_seed_011_gyro_only_covinfl_gate_10 \
+  --seed 11 \
+  --duration-s 8.0 \
+  --estimator-mode fused \
+  --controller-mode closed-loop \
+  --bootstrap-control-policy hold_until_first_detection \
+  --smoother-backend lightweight \
+  --vision-covariance-scale 4.0 \
+  --imu-process-covariance-scale 8.0 \
+  --post-relocalization-covariance-scale 1.0 \
+  --suppression-imu-specific-force-gate-mps2 10.0 \
+  --suppression-propagation-mode gyro_only \
+  --dropout-post-reacquisition-covariance-scale 8.0 \
+  --no-use-aux-tags-in-filter \
+  --no-use-aux-tags-in-smoother \
+  --no-use-aux-map-for-control \
+  --no-promote-global-latest
+python scripts/analyze_isaac_estimator_quality.py \
+  output/isaac_runs/probes/gyro_only_gate_10_validation/second_pass_validation_fused_intermittent_anchor_only_seed_011_gyro_only_covinfl_gate_10
+python scripts/run_isaac_anchor_vio.py \
+  --headless \
+  --visibility-config config/isaac/visibility/anchor_dropout_nominal.yaml \
+  --output-root output/isaac_runs/probes/gyro_only_gate_10_validation \
+  --run-id second_pass_validation_fused_intermittent_anchor_only_seed_017_gyro_only_covinfl_gate_10 \
+  --seed 17 \
+  --duration-s 8.0 \
+  --estimator-mode fused \
+  --controller-mode closed-loop \
+  --bootstrap-control-policy hold_until_first_detection \
+  --smoother-backend lightweight \
+  --vision-covariance-scale 4.0 \
+  --imu-process-covariance-scale 8.0 \
+  --post-relocalization-covariance-scale 1.0 \
+  --suppression-imu-specific-force-gate-mps2 10.0 \
+  --suppression-propagation-mode gyro_only \
+  --dropout-post-reacquisition-covariance-scale 8.0 \
+  --no-use-aux-tags-in-filter \
+  --no-use-aux-tags-in-smoother \
+  --no-use-aux-map-for-control \
+  --no-promote-global-latest
+python scripts/analyze_isaac_estimator_quality.py \
+  output/isaac_runs/probes/gyro_only_gate_10_validation/second_pass_validation_fused_intermittent_anchor_only_seed_017_gyro_only_covinfl_gate_10
+python scripts/analyze_isaac_suppression_windows.py \
+  output/isaac_runs/probes/gyro_only_gate_10_validation/second_pass_followup_fused_nominal_anchor_only_seed_007_gyro_only_covinfl_gate_10
+python scripts/analyze_isaac_suppression_windows.py \
+  output/isaac_runs/probes/gyro_only_gate_10_validation/second_pass_validation_fused_intermittent_anchor_only_seed_011_gyro_only_covinfl_gate_10
+python scripts/analyze_isaac_suppression_windows.py \
+  output/isaac_runs/probes/gyro_only_gate_10_validation/second_pass_validation_fused_intermittent_anchor_only_seed_017_gyro_only_covinfl_gate_10
+```
+
+Outcome:
+- completed
+- nominal fused follow-up stayed healthy:
+  - mean position error: `0.01278 m`
+  - mean waypoint error: `0.02408 m`
+  - empirical 95% coverage: `99.79%`
+  - pose NEES: `3.97`
+- intermittent-anchor fused validation also cleared on seeds `011` and `017`:
+  - seed `011`:
+    - mean position error: `0.03560 m`
+    - mean waypoint error: `0.02235 m`
+    - empirical 95% coverage: `86.04%`
+    - pose NEES: `13.02`
+  - seed `017`:
+    - mean position error: `0.02935 m`
+    - mean waypoint error: `0.02203 m`
+    - empirical 95% coverage: `93.75%`
+    - pose NEES: `10.42`
+- conclusion:
+  - the current packet produced a validated production-like suppression winner:
+    `gyro_only + gate_10 + covinfl`
+  - the next packet can promote that winner into the draft lock and reopen
+    focused retuning and the 18-run suite
+
+26. `.venv`
+
+```bash
+pytest -q tests/test_estimation_factors.py \
+          tests/test_imu_semantics.py \
+          tests/test_isaac_mode_semantics.py \
+          tests/test_isaac_second_pass_tuning.py \
+          tests/test_isaac_second_pass_suite.py \
+          tests/test_isaac_second_pass_media_bundle.py \
+          tests/test_isaac_second_pass_dropout_debug.py \
+          tests/test_isaac_second_pass_switches.py \
+          tests/test_isaac_suppression_windows.py
+python scripts/verify_isaac_first_pass_suite.py
+python scripts/build_isaac_first_pass_publication.py
+```
+
+Outcome:
+- passed
+- result:
+  - regression slice: `37 passed`
+  - first-pass suite verify:
+    - `artifact_source = latest_first_pass_suite`
+    - `ok = true`
+  - first-pass publication build:
+    - `artifact_source = latest_first_pass_suite`
+    - `pdf_exists = true`
+    - `placeholders_remaining = false`
+- conclusion:
+  - the suppression-propagation packet winner did not regress the frozen
+    first-pass publication path

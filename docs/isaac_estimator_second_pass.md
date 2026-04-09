@@ -2,10 +2,12 @@
 
 ## Current Work Packet
 
-- current debug-pack head: `bff0408`
+- current suppression-propagation packet head: `3a4a582`
+- previous dropout-debug packet head: `bff0408`
 - working baseline commit SHA: `334e5a2`
 - preserved pre-draft checkpoint: `b3f23c9`
-- current milestone: `fused-dropout stabilization before draft closure`
+- current milestone: `suppression-window propagation stabilization for fused intermittent-anchor`
+- control dropout bundle: `output/isaac_runs/latest_second_pass_dropout_debug`
 
 This branch continues from the frozen first-pass publication milestone tagged
 `isaac-first-pass-freeze`.
@@ -49,6 +51,36 @@ What is true right now:
   variant clears the blocker bar cleanly, which localizes the remaining defect
   to suppression-window propagation rather than the smoother or a pure
   reacquisition-only failure
+- the current packet has now produced one production-like suppression candidate
+  under a separate probe root without overwriting the control bundle:
+  - candidate root:
+    `output/isaac_runs/probes/gyro_only_gate_10_validation`
+  - candidate runtime policy:
+    - `suppression_propagation_mode = gyro_only`
+    - `suppression_imu_specific_force_gate_mps2 = 10.0`
+    - `dropout_post_reacquisition_covariance_scale = 8.0`
+  - validated intermittent-anchor fused runs:
+    - seed `007`:
+      - mean position error: `0.03091 m`
+      - mean waypoint error: `0.02379 m`
+      - empirical 95% coverage: `88.96%`
+      - pose NEES: `10.10`
+    - seed `011`:
+      - mean position error: `0.03560 m`
+      - mean waypoint error: `0.02235 m`
+      - empirical 95% coverage: `86.04%`
+      - pose NEES: `13.02`
+    - seed `017`:
+      - mean position error: `0.02935 m`
+      - mean waypoint error: `0.02203 m`
+      - empirical 95% coverage: `93.75%`
+      - pose NEES: `10.42`
+- that same candidate preserved a healthy nominal fused follow-up:
+  - `second_pass_followup_fused_nominal_anchor_only_seed_007_gyro_only_covinfl_gate_10`
+    - mean position error: `0.01278 m`
+    - mean waypoint error: `0.02408 m`
+    - empirical 95% coverage: `99.79%`
+    - pose NEES: `3.97`
 - the latest nominal fused recheck stayed healthy while the dropout fixes were
   landing:
   - `second_pass_followup_fused_nominal_anchor_only_seed_007`
@@ -59,10 +91,13 @@ What is true right now:
 - future runs now persist the actual overridden estimator/control configuration
   into the saved run manifest rather than the raw YAML defaults
 
-The practical conclusion is simple: the branch is not blocked on tables,
-figures, or media anymore. It is blocked on one remaining fused runtime or
-mechanization defect that still makes the dropout condition scientifically
-indefensible for the first draft.
+The practical conclusion is now narrower: the control dropout bundle remains
+blocked, but the packet has identified and validated one production-like fused
+suppression strategy that clears the blocker bar on seeds `007`, `011`, and
+`017` without regressing the healthy nominal fused run. The next packet can
+promote that candidate into the draft lock, rerun focused tuning if needed, and
+then reopen the 18-run suite. It should still not reopen the paper or media
+paths until that rerun is complete.
 
 The next work packet is therefore a dedicated seed-`007` dropout debug pack:
 

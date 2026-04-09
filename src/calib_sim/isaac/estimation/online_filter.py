@@ -315,6 +315,35 @@ class AnchoredOnlineFilter:
             return max(float(self.aux_vision_covariance_scale), 1e-6)
         return max(float(self.vision_covariance_scale), 1e-6)
 
+    def _imu_packet_dts(self, imu_packets: tuple[IsaacImuPacket, ...]) -> np.ndarray:
+        if not imu_packets:
+            return np.zeros(0, dtype=np.float64)
+        timestamps = [float(packet.timestamp_s) for packet in imu_packets]
+        dt_packets = [max(timestamps[index] - timestamps[index - 1], 1e-6) for index in range(1, len(timestamps))]
+        dt_packets.insert(0, dt_packets[0] if dt_packets else 1e-2)
+        return np.asarray(dt_packets, dtype=np.float64)
+
+    def _propagate_covariance(self, *, delta_time_s: float) -> None:
+        global_scale = max(float(self.imu_process_covariance_scale), 1e-6)
+        gyro_scale = (
+            global_scale
+            if self.gyro_process_covariance_scale is None
+            else max(float(self.gyro_process_covariance_scale), 1e-6)
+        )
+        accel_scale = (
+            global_scale
+            if self.accel_process_covariance_scale is None
+            else max(float(self.accel_process_covariance_scale), 1e-6)
+        )
+        dt_s = max(float(delta_time_s), 1e-6)
+        process_noise = np.eye(self.covariance.shape[0], dtype=np.float64) * dt_s * 1e-4
+        process_noise[0:3, 0:3] *= gyro_scale
+        process_noise[3:6, 3:6] *= accel_scale
+        process_noise[6:9, 6:9] *= accel_scale
+        process_noise[9:12, 9:12] *= gyro_scale
+        process_noise[12:15, 12:15] *= accel_scale
+        self.covariance = sanitize_covariance(self.covariance + process_noise)
+
     def predict(self, imu_packets: tuple[IsaacImuPacket, ...]) -> None:
         if not self.use_imu_prediction:
             if imu_packets:
@@ -333,17 +362,44 @@ class AnchoredOnlineFilter:
         self.state.position_world_m = delta.final_position_world_m
         if imu_packets:
             self.last_timestamp_s = float(imu_packets[-1].timestamp_s)
-        global_scale = max(float(self.imu_process_covariance_scale), 1e-6)
-        gyro_scale = global_scale if self.gyro_process_covariance_scale is None else max(float(self.gyro_process_covariance_scale), 1e-6)
-        accel_scale = global_scale if self.accel_process_covariance_scale is None else max(float(self.accel_process_covariance_scale), 1e-6)
-        dt_s = max(delta.delta_time_s, 1e-6)
-        process_noise = np.eye(self.covariance.shape[0], dtype=np.float64) * dt_s * 1e-4
-        process_noise[0:3, 0:3] *= gyro_scale
-        process_noise[3:6, 3:6] *= accel_scale
-        process_noise[6:9, 6:9] *= accel_scale
-        process_noise[9:12, 9:12] *= gyro_scale
-        process_noise[12:15, 12:15] *= accel_scale
-        self.covariance = sanitize_covariance(self.covariance + process_noise)
+        self._propagate_covariance(delta_time_s=float(delta.delta_time_s))
+
+    def predict_with_mode(self, imu_packets: tuple[IsaacImuPacket, ...], *, mode: str = "full_imu") -> None:
+        normalized_mode = str(mode).strip().lower()
+        if normalized_mode == "full_imu":
+            self.predict(imu_packets)
+            return
+        if not self.use_imu_prediction:
+            if imu_packets:
+                self.last_timestamp_s = float(imu_packets[-1].timestamp_s)
+            return
+        dt_packets = self._imu_packet_dts(imu_packets)
+        total_dt_s = float(np.sum(dt_packets))
+        if normalized_mode == "gyro_only":
+            rotation_wi = np.asarray(self.state.rotation_wi, dtype=np.float64).reshape(3, 3)
+            for packet, dt_s in zip(imu_packets, dt_packets):
+                corrected_gyro = np.asarray(
+                    [packet.wx, packet.wy, packet.wz],
+                    dtype=np.float64,
+                ).reshape(3) - np.asarray(self.state.gyro_bias_rps, dtype=np.float64).reshape(3)
+                rotation_wi = rotation_wi @ rotation_matrix_from_rvec(corrected_gyro * float(dt_s))
+            self.state.rotation_wi = rotation_wi.astype(np.float64)
+            self.state.position_world_m = (
+                np.asarray(self.state.position_world_m, dtype=np.float64).reshape(3)
+                + np.asarray(self.state.velocity_world_mps, dtype=np.float64).reshape(3) * total_dt_s
+            )
+        elif normalized_mode == "constant_velocity":
+            self.state.position_world_m = (
+                np.asarray(self.state.position_world_m, dtype=np.float64).reshape(3)
+                + np.asarray(self.state.velocity_world_mps, dtype=np.float64).reshape(3) * total_dt_s
+            )
+        elif normalized_mode == "freeze":
+            pass
+        else:
+            raise ValueError(f"Unsupported suppression propagation mode: {mode!r}")
+        if imu_packets:
+            self.last_timestamp_s = float(imu_packets[-1].timestamp_s)
+        self._propagate_covariance(delta_time_s=total_dt_s)
 
     def propagate(self, packets: tuple[IsaacImuPacket, ...]) -> None:
         self.predict(packets)

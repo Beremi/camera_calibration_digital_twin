@@ -133,6 +133,7 @@ class IsaacRunWriter:
                 "reason",
                 "is_reacquisition",
                 "pose_innovation_norm_m",
+                "anchor_nis",
                 "orientation_innovation_norm_deg",
                 "velocity_innovation_norm_mps",
                 "relocalization_correction_norm_m",

@@ -3,8 +3,8 @@
     "canonical_seed": 7,
     "classification": "fused_mechanization_or_weighting_bug",
     "commit": "b3f23c9",
-    "current_work_packet_commit": "bff0408",
-    "draft_selection_status": "blocked_pending_fused_intermittent_anchor_fix",
+    "current_work_packet_commit": "3a4a582",
+    "draft_selection_status": "winner_candidate_validated_pending_lock_promotion_and_suite_rerun",
     "dropout_debug_bundle_dir": "output/isaac_runs/latest_second_pass_dropout_debug",
     "dropout_debug_docs_path": "docs/isaac_second_pass_dropout_debug.md",
     "dropout_debug_run_ids": [
@@ -36,9 +36,11 @@
   },
   "draft_selection": {
     "draft_ready": false,
-    "draft_readiness_note": "The first full 18-run suite was completed once, but the current fused selection is not draft-final because intermittent-anchor fused remains blocked even after the 2026-04-09 inertial kinematics, camera-frame IMU sampling, synthetic IMU conditioning, and suppression-window IMU plausibility-gating fixes. The latest production fused dropout baseline improved to 0.1552 m mean position error with 76.04% coverage and pose NEES 195.95, but that is still not publication-defensible.",
+    "draft_readiness_note": "The control dropout bundle under latest_second_pass_dropout_debug remains blocked, so the second-pass draft suite and media outputs are still stale. This packet did validate one production-like fused suppression candidate under output/isaac_runs/probes/gyro_only_gate_10_validation: suppression_propagation_mode = gyro_only, suppression_imu_specific_force_gate_mps2 = 10.0, and dropout_post_reacquisition_covariance_scale = 8.0. That candidate clears the blocker bar on intermittent-anchor seeds 007, 011, and 017 while preserving a healthy nominal fused seed-007 follow-up, but it has not yet been promoted into the draft lock and the full 18-run suite has not been rerun.",
     "draft_suite_status": "stale_until_rerun_after_fused_dropout_fix",
     "draft_suite_status_reason": "suite_run_ids below were generated before the latest dropout-debug reruns and before the current suppression-window propagation fixes fully stabilized the production fused intermittent-anchor path; do not treat them as draft-final publication inputs until the full suite is rerun",
+    "media_artifacts_stale": true,
+    "suite_artifacts_stale": true,
     "fused_nominal_backend": "lightweight",
     "fused_nominal_covariance_scales": {
       "accel_process_covariance_scale": null,
@@ -55,8 +57,24 @@
       "use_aux_tags_in_filter": false,
       "use_aux_tags_in_smoother": false
     },
-    "latest_nominal_recheck_run_id": "second_pass_followup_fused_nominal_anchor_only_seed_007",
+    "latest_nominal_recheck_run_id": "second_pass_followup_fused_nominal_anchor_only_seed_007_gyro_only_covinfl_gate_10",
     "media_source_run_ids": [],
+    "packet_winner_candidate": {
+      "status": "validated_pending_lock_promotion",
+      "bundle_root": "output/isaac_runs/probes/gyro_only_gate_10_validation",
+      "fused_intermittent_reference_run_ids": [
+        "second_pass_dropout_debug_fused_covinfl_seed_007",
+        "second_pass_validation_fused_intermittent_anchor_only_seed_011_gyro_only_covinfl_gate_10",
+        "second_pass_validation_fused_intermittent_anchor_only_seed_017_gyro_only_covinfl_gate_10"
+      ],
+      "nominal_followup_run_id": "second_pass_followup_fused_nominal_anchor_only_seed_007_gyro_only_covinfl_gate_10",
+      "runtime_overrides": {
+        "disable_imu_prediction_while_anchor_suppressed": false,
+        "dropout_post_reacquisition_covariance_scale": 8.0,
+        "suppression_imu_specific_force_gate_mps2": 10.0,
+        "suppression_propagation_mode": "gyro_only"
+      }
+    },
     "presentation_manifest_path": null,
     "representative_run_ids": {
       "intermittent_anchor": {

@@ -12,6 +12,7 @@ import cv2
 import numpy as np
 
 from calib_sim.reporting.isaac_report_metrics import compute_isaac_estimator_quality, compute_isaac_run_metrics
+from calib_sim.reporting.isaac_suppression_windows import generate_suppression_window_artifacts
 
 
 DEFAULT_SECOND_PASS_DROPOUT_DEBUG_DOC = Path("docs/isaac_second_pass_dropout_debug.md")
@@ -643,6 +644,7 @@ def generate_second_pass_dropout_debug_artifacts(run_dir: str | Path) -> dict[st
         "frames_path": str((resolved / "raw" / "dropout_debug_frames.csv").resolve()),
         "events_path": str((resolved / "raw" / "dropout_debug_events.csv").resolve()),
         "figure_paths": {key: str(path.resolve()) for key, path in paths.items() if key != "summary"},
+        "suppression_window_artifacts": generate_suppression_window_artifacts(resolved),
     }
     _write_json(paths["summary"], payload)
     return payload

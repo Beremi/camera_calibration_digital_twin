@@ -276,3 +276,43 @@ def test_suppression_specific_force_gate_filters_implausible_imu_packets(tmp_pat
     assert len(filtered) == 2
     assert runtime._last_imu_packets_used_for_prediction == 2
     assert runtime._last_imu_packets_rejected_for_prediction == 1
+
+
+def test_gyro_only_suppression_mode_updates_orientation_without_accel_translation(tmp_path) -> None:
+    runtime = create_runtime(_bootstrap(tmp_path, estimator_mode="fused", controller_mode="closed-loop"))
+    runtime._filter = AnchoredOnlineFilter.identity_initialized(estimator_mode="fused")
+    runtime._filter.state.velocity_world_mps = np.array([0.5, 0.0, 0.0], dtype=np.float64)
+    runtime._suppression_propagation_mode = "gyro_only"
+
+    runtime._propagate_filter_from_imu(_rotating_packets(), suppression_active=True)
+
+    assert not np.allclose(runtime._filter.state.rotation_wi, np.eye(3), atol=1e-6)
+    assert np.allclose(runtime._filter.state.velocity_world_mps, np.array([0.5, 0.0, 0.0], dtype=np.float64))
+    assert float(runtime._filter.state.position_world_m[0]) > 0.0
+
+
+def test_constant_velocity_suppression_mode_advances_position_but_holds_orientation(tmp_path) -> None:
+    runtime = create_runtime(_bootstrap(tmp_path, estimator_mode="fused", controller_mode="closed-loop"))
+    runtime._filter = AnchoredOnlineFilter.identity_initialized(estimator_mode="fused")
+    runtime._filter.state.velocity_world_mps = np.array([0.5, 0.0, 0.0], dtype=np.float64)
+    runtime._suppression_propagation_mode = "constant_velocity"
+
+    runtime._propagate_filter_from_imu(_rotating_packets(), suppression_active=True)
+
+    assert np.allclose(runtime._filter.state.rotation_wi, np.eye(3), atol=1e-9)
+    assert np.allclose(runtime._filter.state.velocity_world_mps, np.array([0.5, 0.0, 0.0], dtype=np.float64))
+    assert float(runtime._filter.state.position_world_m[0]) > 0.0
+
+
+def test_freeze_suppression_mode_holds_mean_state_fixed(tmp_path) -> None:
+    runtime = create_runtime(_bootstrap(tmp_path, estimator_mode="fused", controller_mode="closed-loop"))
+    runtime._filter = AnchoredOnlineFilter.identity_initialized(estimator_mode="fused")
+    runtime._filter.state.position_world_m = np.array([0.1, -0.2, 0.3], dtype=np.float64)
+    runtime._filter.state.velocity_world_mps = np.array([0.5, 0.0, 0.0], dtype=np.float64)
+    runtime._suppression_propagation_mode = "freeze"
+
+    runtime._propagate_filter_from_imu(_rotating_packets(), suppression_active=True)
+
+    assert np.allclose(runtime._filter.state.rotation_wi, np.eye(3), atol=1e-9)
+    assert np.allclose(runtime._filter.state.position_world_m, np.array([0.1, -0.2, 0.3], dtype=np.float64))
+    assert np.allclose(runtime._filter.state.velocity_world_mps, np.array([0.5, 0.0, 0.0], dtype=np.float64))

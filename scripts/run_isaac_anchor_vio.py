@@ -90,6 +90,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--anchor-reacquisition-max-innovation-norm", type=float, default=None)
     parser.add_argument("--anchor-reacquisition-max-nis", type=float, default=None)
     parser.add_argument("--suppression-imu-specific-force-gate-mps2", type=float, default=None)
+    parser.add_argument(
+        "--suppression-propagation-mode",
+        choices=("full_imu", "gyro_only", "constant_velocity", "freeze"),
+        default=None,
+    )
     return parser.parse_args()
 
 
@@ -173,6 +178,8 @@ def _apply_second_pass_overrides(config_payloads: dict[str, dict[str, object]], 
         filter_config["suppression_imu_specific_force_gate_mps2"] = float(
             args.suppression_imu_specific_force_gate_mps2
         )
+    if args.suppression_propagation_mode is not None:
+        filter_config["suppression_propagation_mode"] = str(args.suppression_propagation_mode)
 
 
 def _inject_optional_config(

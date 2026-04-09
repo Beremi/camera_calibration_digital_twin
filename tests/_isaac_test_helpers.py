@@ -943,6 +943,8 @@ def make_second_pass_dropout_debug_runs(output_root: Path) -> list[Path]:
         "suppression_active",
         "imu_prediction_disabled",
         "imu_packets_since_last_frame",
+        "imu_packets_used_for_prediction",
+        "imu_packets_rejected_for_prediction",
         "propagation_dt_s",
         "position_error_norm_m",
         "velocity_norm_mps",
@@ -961,6 +963,7 @@ def make_second_pass_dropout_debug_runs(output_root: Path) -> list[Path]:
         "reason",
         "is_reacquisition",
         "pose_innovation_norm_m",
+        "anchor_nis",
         "orientation_innovation_norm_deg",
         "velocity_innovation_norm_mps",
         "relocalization_correction_norm_m",
@@ -1014,6 +1017,12 @@ def make_second_pass_dropout_debug_runs(output_root: Path) -> list[Path]:
                         "suppression_active": suppression_active,
                         "imu_prediction_disabled": debug_mode == "fused_no_imu_during_suppression" and suppression_active,
                         "imu_packets_since_last_frame": 6,
+                        "imu_packets_used_for_prediction": 0
+                        if debug_mode == "fused_no_imu_during_suppression" and suppression_active
+                        else 6,
+                        "imu_packets_rejected_for_prediction": 6
+                        if debug_mode == "fused_no_imu_during_suppression" and suppression_active
+                        else 0,
                         "propagation_dt_s": 0.2 if index else 0.0,
                         "position_error_norm_m": frame_error,
                         "velocity_norm_mps": 0.04 + 0.01 * index,
@@ -1037,6 +1046,7 @@ def make_second_pass_dropout_debug_runs(output_root: Path) -> list[Path]:
                     "reason": "suppressed_window",
                     "is_reacquisition": False,
                     "pose_innovation_norm_m": "",
+                    "anchor_nis": "",
                     "orientation_innovation_norm_deg": "",
                     "velocity_innovation_norm_mps": "",
                     "relocalization_correction_norm_m": "",
@@ -1053,6 +1063,7 @@ def make_second_pass_dropout_debug_runs(output_root: Path) -> list[Path]:
                     "reason": "accepted" if reacq_corr is not None else "first_lock_only_mode",
                     "is_reacquisition": True,
                     "pose_innovation_norm_m": 0.32 if reacq_corr is not None else "",
+                    "anchor_nis": 12.0 if reacq_corr is not None else "",
                     "orientation_innovation_norm_deg": 4.0 if reacq_corr is not None else "",
                     "velocity_innovation_norm_mps": 0.18 if reacq_corr is not None else "",
                     "relocalization_correction_norm_m": "" if reacq_corr is None else reacq_corr,

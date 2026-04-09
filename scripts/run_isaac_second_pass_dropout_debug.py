@@ -41,6 +41,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gyro-process-covariance-scale", type=float, default=None)
     parser.add_argument("--accel-process-covariance-scale", type=float, default=None)
     parser.add_argument("--suppression-imu-specific-force-gate-mps2", type=float, default=None)
+    parser.add_argument(
+        "--suppression-propagation-mode",
+        choices=("full_imu", "gyro_only", "constant_velocity", "freeze"),
+        default=None,
+    )
     parser.add_argument("--docs-path", default=str(DEFAULT_SECOND_PASS_DROPOUT_DEBUG_DOC))
     return parser.parse_args()
 
@@ -103,6 +108,13 @@ def _run_command(args: argparse.Namespace, spec: dict[str, Any]) -> list[str]:
                 [
                     "--suppression-imu-specific-force-gate-mps2",
                     str(args.suppression_imu_specific_force_gate_mps2),
+                ]
+            )
+        if args.suppression_propagation_mode is not None:
+            command.extend(
+                [
+                    "--suppression-propagation-mode",
+                    str(args.suppression_propagation_mode),
                 ]
             )
     if debug_mode == "fused_no_reacquisition":

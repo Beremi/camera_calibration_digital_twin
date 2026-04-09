@@ -244,6 +244,7 @@ class IsaacStandaloneRuntime:
         self._last_camera_timestamp_s: float | None = None
         self._disable_imu_prediction_while_anchor_suppressed = False
         self._suppression_imu_specific_force_gate_mps2: float | None = None
+        self._suppression_propagation_mode = "full_imu"
         self._last_imu_packets_used_for_prediction = 0
         self._last_imu_packets_rejected_for_prediction = 0
 
@@ -374,6 +375,7 @@ class IsaacStandaloneRuntime:
             self._suppression_imu_specific_force_gate_mps2 = float(
                 filter_config.get("suppression_imu_specific_force_gate_mps2")
             )
+        self._suppression_propagation_mode = str(filter_config.get("suppression_propagation_mode", "full_imu")).strip().lower()
         smoother_backend = str(smoother_config.get("backend", "lightweight")).strip().lower()
         if smoother_backend == "windowed_ba":
             self._smoother = WindowedAnchorBASmoother(
@@ -537,6 +539,7 @@ class IsaacStandaloneRuntime:
         reason: str,
         is_reacquisition: bool = False,
         pose_innovation_norm_m: float | None = None,
+        anchor_nis: float | None = None,
         orientation_innovation_norm_deg: float | None = None,
         velocity_innovation_norm_mps: float | None = None,
         relocalization_correction_norm_m: float | None = None,
@@ -552,6 +555,7 @@ class IsaacStandaloneRuntime:
                 "reason": str(reason),
                 "is_reacquisition": bool(is_reacquisition),
                 "pose_innovation_norm_m": None if pose_innovation_norm_m is None else float(pose_innovation_norm_m),
+                "anchor_nis": None if anchor_nis is None else float(anchor_nis),
                 "orientation_innovation_norm_deg": None
                 if orientation_innovation_norm_deg is None
                 else float(orientation_innovation_norm_deg),
@@ -635,6 +639,38 @@ class IsaacStandaloneRuntime:
         self._last_imu_packets_used_for_prediction = len(filtered_packets)
         self._last_imu_packets_rejected_for_prediction = rejected_count
         return filtered_packets
+
+    def _propagate_filter_from_imu(
+        self,
+        imu_packets: tuple[IsaacImuPacket, ...],
+        *,
+        suppression_active: bool,
+    ) -> None:
+        if self._filter is None:
+            self._last_imu_packets_used_for_prediction = 0
+            self._last_imu_packets_rejected_for_prediction = 0
+            return
+        if not imu_packets:
+            self._last_imu_packets_used_for_prediction = 0
+            self._last_imu_packets_rejected_for_prediction = 0
+            return
+        if suppression_active and self._disable_imu_prediction_while_anchor_suppressed:
+            self._last_imu_packets_used_for_prediction = 0
+            self._last_imu_packets_rejected_for_prediction = len(imu_packets)
+            return
+        packets_for_prediction = self._filter_imu_packets_for_prediction(
+            imu_packets,
+            suppression_active=bool(suppression_active),
+        )
+        if not packets_for_prediction:
+            return
+        if suppression_active:
+            self._filter.predict_with_mode(
+                packets_for_prediction,
+                mode=self._suppression_propagation_mode,
+            )
+            return
+        self._filter.predict(packets_for_prediction)
 
     def _log_realized_state(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         if self._robot_binding is None:
@@ -843,6 +879,7 @@ class IsaacStandaloneRuntime:
                     reason=str(anchor_update_result.reason),
                     is_reacquisition=bool(anchor_update_result.is_reacquisition),
                     pose_innovation_norm_m=float(anchor_update_result.innovation_norm_m),
+                    anchor_nis=None if anchor_update_result.anchor_nis is None else float(anchor_update_result.anchor_nis),
                     orientation_innovation_norm_deg=float(anchor_update_result.orientation_innovation_norm_deg),
                     velocity_innovation_norm_mps=float(anchor_update_result.velocity_innovation_norm_mps),
                     relocalization_correction_norm_m=float(anchor_update_result.relocalization_correction_norm_m),
@@ -1309,17 +1346,10 @@ class IsaacStandaloneRuntime:
         )
         if self._filter is not None and imu_packets:
             suppression_active = self._anchor_updates_suppressed(timestamp_s=float(self._sim_time_s))
-            if suppression_active and self._disable_imu_prediction_while_anchor_suppressed:
-                self._last_imu_packets_used_for_prediction = 0
-                self._last_imu_packets_rejected_for_prediction = len(imu_packets)
-                pass
-            else:
-                packets_for_prediction = self._filter_imu_packets_for_prediction(
-                    imu_packets,
-                    suppression_active=bool(suppression_active),
-                )
-                if packets_for_prediction:
-                    self._filter.predict(packets_for_prediction)
+            self._propagate_filter_from_imu(
+                imu_packets,
+                suppression_active=bool(suppression_active),
+            )
         else:
             self._last_imu_packets_used_for_prediction = 0
             self._last_imu_packets_rejected_for_prediction = 0

@@ -126,6 +126,8 @@ def test_run_script_dry_run_exposes_reacquisition_and_suppression_gate_switches(
             "32.0",
             "--suppression-imu-specific-force-gate-mps2",
             "10.0",
+            "--suppression-propagation-mode",
+            "gyro_only",
         ],
         cwd=str(repo_root),
         check=True,
@@ -137,7 +139,9 @@ def test_run_script_dry_run_exposes_reacquisition_and_suppression_gate_switches(
     assert estimation_filter["anchor_reacquisition_max_innovation_norm"] == 0.25
     assert estimation_filter["anchor_reacquisition_max_nis"] == 32.0
     assert estimation_filter["suppression_imu_specific_force_gate_mps2"] == 10.0
+    assert estimation_filter["suppression_propagation_mode"] == "gyro_only"
     manifest_filter = payload["manifest"]["estimator_config"]["filter"]
     assert manifest_filter["anchor_reacquisition_max_innovation_norm"] == 0.25
     assert manifest_filter["anchor_reacquisition_max_nis"] == 32.0
     assert manifest_filter["suppression_imu_specific_force_gate_mps2"] == 10.0
+    assert manifest_filter["suppression_propagation_mode"] == "gyro_only"

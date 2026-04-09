@@ -37,8 +37,14 @@ def test_run_script_dry_run_exposes_auxiliary_isolation_switches(tmp_path: Path)
             "6.0",
             "--imu-process-covariance-scale",
             "3.0",
+            "--gyro-process-covariance-scale",
+            "7.0",
+            "--accel-process-covariance-scale",
+            "8.0",
             "--post-relocalization-covariance-scale",
             "4.0",
+            "--visibility-config",
+            "config/isaac/visibility/anchor_dropout_nominal.yaml",
             "--no-promote-global-latest",
         ],
         cwd=str(repo_root),
@@ -59,4 +65,7 @@ def test_run_script_dry_run_exposes_auxiliary_isolation_switches(tmp_path: Path)
     assert estimation_filter["anchor_vision_covariance_scale"] == 5.0
     assert estimation_filter["aux_vision_covariance_scale"] == 6.0
     assert estimation_filter["imu_process_covariance_scale"] == 3.0
+    assert estimation_filter["gyro_process_covariance_scale"] == 7.0
+    assert estimation_filter["accel_process_covariance_scale"] == 8.0
     assert estimation_filter["post_relocalization_covariance_scale"] == 4.0
+    assert payload["config_snapshots"]["visibility"]["name"] == "anchor_dropout_nominal"

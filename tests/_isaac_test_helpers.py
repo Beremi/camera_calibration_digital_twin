@@ -847,3 +847,208 @@ def make_second_pass_isolation_runs(output_root: Path) -> list[Path]:
         )
         run_dirs.append(run_dir)
     return run_dirs
+
+
+def make_second_pass_draft_lock(docs_dir: Path) -> Path:
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = docs_dir / "second_pass_draft_lock.json"
+    suite_run_ids = [
+        f"second_pass_draft_{estimator_mode}_{condition}_seed_{seed:03d}"
+        for condition in ("nominal_full_anchor", "intermittent_anchor", "servo_stress")
+        for estimator_mode in ("visual", "fused")
+        for seed in (7, 11, 17)
+    ]
+    lock_payload = {
+        "checkpoint": {
+            "classification": "fused_mechanization_or_weighting_bug",
+            "commit": "b3f23c9",
+            "canonical_seed": 7,
+            "isolation_bundle_dir": "output/isaac_runs/second_pass_checkpoint_isolation_seed_007",
+            "isolation_docs_path": "docs/isaac_second_pass_isolation_summary.md",
+            "isolation_run_ids": [
+                "second_pass_visual_closed_loop_anchor_only_seed_007",
+                "second_pass_fused_closed_loop_anchor_only_seed_007",
+                "second_pass_visual_closed_loop_aux_estimation_only_seed_007",
+                "second_pass_fused_closed_loop_aux_estimation_only_seed_007",
+                "second_pass_visual_closed_loop_aux_for_control_seed_007",
+                "second_pass_fused_closed_loop_aux_for_control_seed_007",
+            ],
+        },
+        "draft_selection": {
+            "fused_nominal_backend": "lightweight",
+            "fused_nominal_covariance_scales": {
+                "vision_covariance_scale": 1.0,
+                "anchor_vision_covariance_scale": None,
+                "aux_vision_covariance_scale": None,
+                "imu_process_covariance_scale": 4.0,
+                "gyro_process_covariance_scale": None,
+                "accel_process_covariance_scale": None,
+                "post_relocalization_covariance_scale": 1.0,
+            },
+            "fused_nominal_reference_run_id": "second_pass_draft_fused_nominal_full_anchor_seed_007",
+            "visual_nominal_reference_run_id": "second_pass_draft_visual_nominal_full_anchor_seed_007",
+            "suite_run_ids": suite_run_ids,
+            "media_source_run_ids": [
+                "second_pass_draft_visual_nominal_full_anchor_seed_007",
+                "second_pass_draft_fused_nominal_full_anchor_seed_007",
+                "second_pass_draft_visual_intermittent_anchor_seed_007",
+                "second_pass_draft_fused_intermittent_anchor_seed_007",
+                "second_pass_draft_fused_servo_stress_seed_007",
+            ],
+        },
+    }
+    lock_path.write_text(json.dumps(lock_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return lock_path
+
+
+def make_second_pass_draft_suite_runs(output_root: Path) -> list[Path]:
+    output_root.mkdir(parents=True, exist_ok=True)
+    run_dirs: list[Path] = []
+    seeds = (7, 11, 17)
+    condition_specs = {
+        "nominal_full_anchor": {
+            "visibility_preset": "",
+            "actuation_preset": "servo_nominal",
+            "anchor_effective_fraction": 1.0,
+            "anchor_suppressed_fraction": 0.0,
+        },
+        "intermittent_anchor": {
+            "visibility_preset": "anchor_dropout_nominal",
+            "actuation_preset": "servo_nominal",
+            "anchor_effective_fraction": 0.76,
+            "anchor_suppressed_fraction": 0.24,
+        },
+        "servo_stress": {
+            "visibility_preset": "",
+            "actuation_preset": "servo_stress",
+            "anchor_effective_fraction": 1.0,
+            "anchor_suppressed_fraction": 0.0,
+        },
+    }
+    for condition, condition_spec in condition_specs.items():
+        for estimator_mode in ("visual", "fused"):
+            for seed in seeds:
+                run_id = f"second_pass_draft_{estimator_mode}_{condition}_seed_{seed:03d}"
+                run_dir = output_root / run_id
+                if run_dir.exists():
+                    shutil.rmtree(run_dir)
+                (run_dir / "analysis" / "report_data").mkdir(parents=True, exist_ok=True)
+                (run_dir / "config_snapshot").mkdir(parents=True, exist_ok=True)
+                (run_dir / "estimates").mkdir(parents=True, exist_ok=True)
+                (run_dir / "raw" / "rgb").mkdir(parents=True, exist_ok=True)
+
+                is_fused = estimator_mode == "fused"
+                condition_scale = {
+                    "nominal_full_anchor": 1.0,
+                    "intermittent_anchor": 1.25,
+                    "servo_stress": 1.45,
+                }[condition]
+                pos_err = (0.018 if is_fused else 0.019) * condition_scale
+                waypoint_err = (0.020 if is_fused else 0.021) * condition_scale
+                if condition == "intermittent_anchor":
+                    pos_err = 0.019 if is_fused else 0.026
+                    waypoint_err = 0.021 if is_fused else 0.031
+                coverage = 95.0 if is_fused else 92.5
+                nees = 5.8 if is_fused else 7.2
+                if condition == "servo_stress":
+                    coverage = 94.0 if is_fused else 91.0
+                    nees = 6.6 if is_fused else 8.3
+                map_mean = 0.040 if is_fused else 0.055
+                map_p95 = 0.070 if is_fused else 0.090
+                actuator_tracking = 0.010 if condition == "servo_stress" else 0.004
+                anchor_rmse = 0.16 if is_fused else 0.20
+                aux_rmse = 0.42 if is_fused else 0.58
+                if condition == "intermittent_anchor":
+                    anchor_rmse = 0.22 if is_fused else 0.35
+                    aux_rmse = 0.48 if is_fused else 0.64
+                metrics = {
+                    "run_id": run_id,
+                    "config": {
+                        "estimator_mode": estimator_mode,
+                        "controller_mode": "closed-loop",
+                        "actuation_preset": condition_spec["actuation_preset"],
+                        "visibility_preset": condition_spec["visibility_preset"],
+                    },
+                    "counts": {
+                        "camera_frames": 240,
+                        "imu_packets": 1600,
+                        "commands": 400,
+                    },
+                    "timing": {"duration_s": 8.0},
+                    "trajectory": {"mean_position_error_m": pos_err},
+                    "control": {
+                        "mean_waypoint_error_m": waypoint_err,
+                        "completion_fraction": 1.0 if is_fused else 0.97,
+                        "ik_failure_fraction": 0.02 if is_fused else 0.05,
+                        "mean_actuator_tracking_error": actuator_tracking,
+                    },
+                    "uncertainty_calibration": {
+                        "mean_position_radius_95_m": 0.028 if is_fused else 0.031,
+                        "empirical_95_coverage_percent": coverage,
+                        "pose_nees": nees,
+                        "sigma_error_correlation": 0.71 if is_fused else 0.66,
+                    },
+                    "map_quality": {
+                        "mean_auxiliary_tag_position_error_m": map_mean,
+                        "p95_auxiliary_tag_position_error_m": map_p95,
+                    },
+                    "estimation": {
+                        "anchor_visible_raw_fraction": 1.0,
+                        "anchor_visible_effective_fraction": condition_spec["anchor_effective_fraction"],
+                        "anchor_update_suppressed_fraction": condition_spec["anchor_suppressed_fraction"],
+                    },
+                }
+                quality = {
+                    "run_id": run_id,
+                    "summary": {
+                        "anchor_mean_reprojection_rmse_px": anchor_rmse,
+                        "auxiliary_mean_reprojection_rmse_px": aux_rmse,
+                        "mean_smoother_correction_norm_m": 0.022 if is_fused else 0.031,
+                    },
+                }
+                (run_dir / "analysis" / "metrics.json").write_text(
+                    json.dumps(metrics, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                (run_dir / "analysis" / "estimator_quality.json").write_text(
+                    json.dumps(quality, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                (run_dir / "config_snapshot" / "estimation.json").write_text(
+                    json.dumps(
+                        {"smoother": {"backend": "lightweight"}},
+                        indent=2,
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                uncertainty_rows = [
+                    {
+                        "timestamp_s": 0.10,
+                        "diagnostics": {
+                            "last_anchor_nis": 1.5 if is_fused else 1.8,
+                            "last_auxiliary_nis": 2.1 if is_fused else 2.5,
+                        },
+                    },
+                    {
+                        "timestamp_s": 0.20,
+                        "diagnostics": {
+                            "last_anchor_nis": 1.6 if is_fused else 1.9,
+                            "last_auxiliary_nis": 2.0 if is_fused else 2.6,
+                        },
+                    },
+                ]
+                with (run_dir / "estimates" / "uncertainty.jsonl").open("w", encoding="utf-8") as handle:
+                    for row in uncertainty_rows:
+                        handle.write(json.dumps(row, sort_keys=True) + "\n")
+                for figure_name in (
+                    run_dir / "analysis" / "report_data" / "trajectory_path.png",
+                    run_dir / "analysis" / "anchor_vs_aux_residuals.png",
+                    run_dir / "analysis" / "smoother_correction_timeline.png",
+                ):
+                    _write_placeholder_png(figure_name)
+                rgb_path = run_dir / "raw" / "rgb" / "frame_000000.png"
+                _write_placeholder_png(rgb_path)
+                run_dirs.append(run_dir)
+    return run_dirs

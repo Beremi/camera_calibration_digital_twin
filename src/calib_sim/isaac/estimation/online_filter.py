@@ -208,6 +208,8 @@ class AnchoredOnlineFilter:
     anchor_vision_covariance_scale: float | None = None
     aux_vision_covariance_scale: float | None = None
     imu_process_covariance_scale: float = 1.0
+    gyro_process_covariance_scale: float | None = None
+    accel_process_covariance_scale: float | None = None
     post_relocalization_covariance_scale: float = 1.0
     last_anchor_nis: float | None = None
     last_auxiliary_nis: float | None = None
@@ -271,9 +273,16 @@ class AnchoredOnlineFilter:
         self.state.position_world_m = delta.final_position_world_m
         if imu_packets:
             self.last_timestamp_s = float(imu_packets[-1].timestamp_s)
-        process_noise_scale = max(float(self.imu_process_covariance_scale), 1e-6)
-        process_noise = np.eye(self.covariance.shape[0], dtype=np.float64) * max(delta.delta_time_s, 1e-6) * 1e-4
-        process_noise *= process_noise_scale
+        global_scale = max(float(self.imu_process_covariance_scale), 1e-6)
+        gyro_scale = global_scale if self.gyro_process_covariance_scale is None else max(float(self.gyro_process_covariance_scale), 1e-6)
+        accel_scale = global_scale if self.accel_process_covariance_scale is None else max(float(self.accel_process_covariance_scale), 1e-6)
+        dt_s = max(delta.delta_time_s, 1e-6)
+        process_noise = np.eye(self.covariance.shape[0], dtype=np.float64) * dt_s * 1e-4
+        process_noise[0:3, 0:3] *= gyro_scale
+        process_noise[3:6, 3:6] *= accel_scale
+        process_noise[6:9, 6:9] *= accel_scale
+        process_noise[9:12, 9:12] *= gyro_scale
+        process_noise[12:15, 12:15] *= accel_scale
         self.covariance = sanitize_covariance(self.covariance + process_noise)
 
     def propagate(self, packets: tuple[IsaacImuPacket, ...]) -> None:
@@ -645,6 +654,12 @@ class AnchoredOnlineFilter:
                 if self.aux_vision_covariance_scale is None
                 else float(self.aux_vision_covariance_scale),
                 "imu_process_covariance_scale": float(self.imu_process_covariance_scale),
+                "gyro_process_covariance_scale": None
+                if self.gyro_process_covariance_scale is None
+                else float(self.gyro_process_covariance_scale),
+                "accel_process_covariance_scale": None
+                if self.accel_process_covariance_scale is None
+                else float(self.accel_process_covariance_scale),
                 "post_relocalization_covariance_scale": float(self.post_relocalization_covariance_scale),
                 "last_anchor_nis": None if self.last_anchor_nis is None else float(self.last_anchor_nis),
                 "last_auxiliary_nis": None if self.last_auxiliary_nis is None else float(self.last_auxiliary_nis),
@@ -682,6 +697,12 @@ class AnchoredOnlineFilter:
                 if self.aux_vision_covariance_scale is None
                 else float(self.aux_vision_covariance_scale),
                 "imu_process_covariance_scale": float(self.imu_process_covariance_scale),
+                "gyro_process_covariance_scale": None
+                if self.gyro_process_covariance_scale is None
+                else float(self.gyro_process_covariance_scale),
+                "accel_process_covariance_scale": None
+                if self.accel_process_covariance_scale is None
+                else float(self.accel_process_covariance_scale),
                 "post_relocalization_covariance_scale": float(self.post_relocalization_covariance_scale),
                 "last_anchor_nis": None if self.last_anchor_nis is None else float(self.last_anchor_nis),
                 "last_auxiliary_nis": None if self.last_auxiliary_nis is None else float(self.last_auxiliary_nis),

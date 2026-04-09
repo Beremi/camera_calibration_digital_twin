@@ -24,6 +24,8 @@ def _default_config_paths() -> dict[str, str]:
         "actuation": "config/isaac/actuation/servo_nominal.yaml",
         "estimation": "config/isaac/estimation/anchored_vio.yaml",
         "control": "config/isaac/control/path_tracking.yaml",
+        "visibility": "config/isaac/visibility/anchor_dropout_nominal.yaml",
+        "media": "config/isaac/media/hero_capture.yaml",
     }
 
 
@@ -37,6 +39,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--actuation-config", default=defaults["actuation"])
     parser.add_argument("--estimation-config", default=defaults["estimation"])
     parser.add_argument("--control-config", default=defaults["control"])
+    parser.add_argument("--visibility-config", default=None)
+    parser.add_argument("--media-config", default=None)
     parser.add_argument("--output-root", default="output/isaac_runs")
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--seed", type=int, default=7)
@@ -65,6 +69,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--anchor-vision-covariance-scale", type=float, default=None)
     parser.add_argument("--aux-vision-covariance-scale", type=float, default=None)
     parser.add_argument("--imu-process-covariance-scale", type=float, default=None)
+    parser.add_argument("--gyro-process-covariance-scale", type=float, default=None)
+    parser.add_argument("--accel-process-covariance-scale", type=float, default=None)
     parser.add_argument("--post-relocalization-covariance-scale", type=float, default=None)
     return parser.parse_args()
 
@@ -109,8 +115,25 @@ def _apply_second_pass_overrides(config_payloads: dict[str, dict[str, object]], 
         filter_config["aux_vision_covariance_scale"] = float(args.aux_vision_covariance_scale)
     if args.imu_process_covariance_scale is not None:
         filter_config["imu_process_covariance_scale"] = float(args.imu_process_covariance_scale)
+    if args.gyro_process_covariance_scale is not None:
+        filter_config["gyro_process_covariance_scale"] = float(args.gyro_process_covariance_scale)
+    if args.accel_process_covariance_scale is not None:
+        filter_config["accel_process_covariance_scale"] = float(args.accel_process_covariance_scale)
     if args.post_relocalization_covariance_scale is not None:
         filter_config["post_relocalization_covariance_scale"] = float(args.post_relocalization_covariance_scale)
+
+
+def _inject_optional_config(
+    runtime: object,
+    *,
+    name: str,
+    path: str | None,
+) -> None:
+    if path in (None, ""):
+        return
+    payload = load_isaac_yaml(path)
+    runtime.config.config_payloads[str(name)] = payload
+    runtime.config.config_paths[str(name)] = str(path)
 
 
 def main() -> int:
@@ -140,6 +163,8 @@ def main() -> int:
         allow_gt_debug_control=bool(args.allow_gt_debug_control),
     )
     runtime = create_runtime(bootstrap)
+    _inject_optional_config(runtime, name="visibility", path=args.visibility_config)
+    _inject_optional_config(runtime, name="media", path=args.media_config)
     _apply_second_pass_overrides(runtime.config.config_payloads, args)
     writer = runtime.writer
     for name, payload in runtime.config.config_payloads.items():

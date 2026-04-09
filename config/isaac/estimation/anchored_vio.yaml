@@ -13,6 +13,8 @@ filter:
   anchor_vision_covariance_scale: null
   aux_vision_covariance_scale: null
   imu_process_covariance_scale: 1.0
+  gyro_process_covariance_scale: null
+  accel_process_covariance_scale: null
   post_relocalization_covariance_scale: 1.0
   auxiliary_update_min_corner_margin_px: 12.0
   auxiliary_update_min_visibility_streak: 2

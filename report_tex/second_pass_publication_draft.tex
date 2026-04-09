@@ -1,0 +1,180 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{caption}
+\hypersetup{colorlinks=true,citecolor=blue,linkcolor=blue,urlcolor=blue}
+
+\newcommand{\ArtifactPending}{\textit{pending Isaac artifact}}
+\newcommand{\IsaacSecondPassSuiteReportDataDir}{../output/isaac_runs/latest_second_pass_suite/analysis/report_data}
+\newcommand{\IsaacSecondPassRuntimeRows}{%
+Nominal / full anchor / visual & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+Nominal / full anchor / fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\IsaacSecondPassNominalRows}{%
+visual & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\IsaacSecondPassDropoutRows}{%
+visual & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\IsaacSecondPassActuationStressRows}{%
+visual & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\IsaacSecondPassUncertaintyRows}{%
+Nominal / full anchor / visual & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+Nominal / full anchor / fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\IsaacSecondPassMapQualityRows}{%
+Nominal / full anchor / visual & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+Nominal / full anchor / fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\IfFileExists{\IsaacSecondPassSuiteReportDataDir/second_pass_paper_artifacts.tex}{%
+    \input{\IsaacSecondPassSuiteReportDataDir/second_pass_paper_artifacts.tex}%
+}{}
+
+\title{Second-Pass Draft: Anchored Visual and Visual--Inertial Closed-Loop Path Tracking with Uncertain Servo Actuation in Isaac Sim}
+\author{Artifact-driven second-pass draft generated from the estimator-quality branch}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This draft reports the second-pass Isaac experiments built on top of the frozen first-pass baseline. The goal of this branch is intentionally narrow: retune and refine the anchored visual--inertial estimator until fused closed-loop performance becomes competitive with visual-only on the clean nominal condition, then test one intermittent-anchor condition and one stronger actuation-stress condition to identify the regime where fusion begins to help. All headline tables and figures in this document are populated from generated artifacts under \texttt{output/isaac\_runs/latest\_second\_pass\_suite/analysis/}.
+\end{abstract}
+
+\section{Draft Scope}
+The frozen first-pass publication bundle remains unchanged under \texttt{latest\_first\_pass\_suite}. This draft reads only the second-pass suite under \texttt{latest\_second\_pass\_suite}. The scientific question is focused on estimator quality, not on new scenes, new robots, or replay re-solving.
+
+\section{Runtime Summary}
+\begin{table}[H]
+\centering
+\caption{Second-pass runtime and data-volume summary across the draft suite.}
+\begin{tabular}{lccccc}
+\toprule
+Condition / estimator & Samples & Duration [s] & Frames & IMU & Commands \\
+\midrule
+\IsaacSecondPassRuntimeRows
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Results}
+\begin{table}[H]
+\centering
+\caption{Nominal full-anchor closed-loop comparison.}
+\begin{tabular}{lccccc}
+\toprule
+Estimator & Pos. err [m] & Waypoint err [m] & Completion [\%] & Anchor RMSE [px] & Aux RMSE [px] \\
+\midrule
+\IsaacSecondPassNominalRows
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Intermittent-anchor comparison with deterministic anchor-update suppression.}
+\begin{tabular}{lccccc}
+\toprule
+Estimator & Pos. err [m] & Waypoint err [m] & Completion [\%] & Effective anchor visible [\%] & Anchor suppressed [\%] \\
+\midrule
+\IsaacSecondPassDropoutRows
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Actuation-stress comparison under the servo\_stress preset.}
+\begin{tabular}{lccccc}
+\toprule
+Estimator & Pos. err [m] & Waypoint err [m] & Completion [\%] & Actuator track err & IK fail [\%] \\
+\midrule
+\IsaacSecondPassActuationStressRows
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Second-pass uncertainty summary.}
+\begin{tabular}{lcccccc}
+\toprule
+Condition / estimator & Radius [m] & Coverage [\%] & NEES & Sigma/error corr. & Anchor NIS & Aux NIS \\
+\midrule
+\IsaacSecondPassUncertaintyRows
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Second-pass auxiliary-map quality and effective visibility.}
+\begin{tabular}{lccccc}
+\toprule
+Condition / estimator & Mean aux err [m] & P95 aux err [m] & Raw anchor [\%] & Effective anchor [\%] & Suppressed [\%] \\
+\midrule
+\IsaacSecondPassMapQualityRows
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../output/isaac_runs/latest_second_pass_suite/analysis/nominal_trajectory_compare.png}
+\caption{Nominal trajectory comparison for the representative visual and fused seed-007 runs.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../output/isaac_runs/latest_second_pass_suite/analysis/dropout_trajectory_compare.png}
+\caption{Intermittent-anchor trajectory comparison with deterministic anchor-update suppression windows.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../output/isaac_runs/latest_second_pass_suite/analysis/stress_trajectory_compare.png}
+\caption{Servo-stress trajectory comparison for the representative visual and fused runs.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../output/isaac_runs/latest_second_pass_suite/analysis/coverage_nees_compare.png}
+\caption{Coverage and NEES summary for the second-pass draft suite.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../output/isaac_runs/latest_second_pass_suite/analysis/anchor_vs_aux_residuals_nominal.png}
+\caption{Residual-quality comparison on the nominal condition.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../output/isaac_runs/latest_second_pass_suite/analysis/smoother_feedback_compare.png}
+\caption{Smoother-feedback diagnostics for the representative nominal runs.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../output/isaac_runs/latest_second_pass_suite/analysis/tuning_heatmap_fused.png}
+\caption{Fused-tuning summary used to select the nominal second-pass configuration.}
+\end{figure}
+
+\section{Discussion}
+The intended draft claim is deliberately modest: once the fused mechanization and weighting issue is corrected, anchored visual--inertial closed-loop control becomes competitive with visual-only on the nominal condition and is then tested under one harder visibility condition and one stronger actuation condition. This draft does not claim broad scene generalization, real-phone transfer, or full replay re-solving.
+
+\end{document}

@@ -221,6 +221,8 @@ class IsaacStandaloneRuntime:
         self._latest_uncertainty = None
         self._latest_auxiliary_update_summary = None
         self._last_anchor_visible = False
+        self._last_anchor_visible_raw = False
+        self._last_anchor_update_suppressed = False
         self._last_detections = ()
         self._physics_dt_s = 1.0 / float(self.config.config_payloads["scene"]["physics_rate_hz"])
         self._sim_time_s = 0.0
@@ -325,6 +327,10 @@ class IsaacStandaloneRuntime:
         if filter_config.get("aux_vision_covariance_scale") not in (None, ""):
             self._filter.aux_vision_covariance_scale = float(filter_config.get("aux_vision_covariance_scale"))
         self._filter.imu_process_covariance_scale = float(filter_config.get("imu_process_covariance_scale", 1.0))
+        if filter_config.get("gyro_process_covariance_scale") not in (None, ""):
+            self._filter.gyro_process_covariance_scale = float(filter_config.get("gyro_process_covariance_scale"))
+        if filter_config.get("accel_process_covariance_scale") not in (None, ""):
+            self._filter.accel_process_covariance_scale = float(filter_config.get("accel_process_covariance_scale"))
         self._filter.post_relocalization_covariance_scale = float(
             filter_config.get("post_relocalization_covariance_scale", 1.0)
         )
@@ -451,6 +457,34 @@ class IsaacStandaloneRuntime:
                 }
             )
         self._writer.write_tag_gt({"anchor_tag_id": int(self.config.anchor_tag_id), "tags": tags_payload})
+
+    def _visibility_config(self) -> dict[str, Any]:
+        payload = self.config.config_payloads.get("visibility", {})
+        return payload if isinstance(payload, dict) else {}
+
+    def _anchor_dropout_intervals_s(self) -> tuple[tuple[float, float], ...]:
+        payload = self._visibility_config()
+        if not bool(payload.get("enabled", True)):
+            return ()
+        raw_intervals = payload.get("suppressed_intervals_s", [])
+        if not isinstance(raw_intervals, list):
+            return ()
+        intervals: list[tuple[float, float]] = []
+        for interval in raw_intervals:
+            if not isinstance(interval, (list, tuple)) or len(interval) < 2:
+                continue
+            start_s = float(interval[0])
+            end_s = float(interval[1])
+            if end_s <= start_s:
+                continue
+            intervals.append((start_s, end_s))
+        return tuple(intervals)
+
+    def _anchor_updates_suppressed(self, *, timestamp_s: float) -> bool:
+        for start_s, end_s in self._anchor_dropout_intervals_s():
+            if start_s <= float(timestamp_s) <= end_s:
+                return True
+        return False
 
     def _log_realized_state(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         if self._robot_binding is None:
@@ -588,9 +622,13 @@ class IsaacStandaloneRuntime:
                 self._writer.write_detection(detection)
                 self._counts["detections"] += 1
             self._last_detections = pack.detections
-            self._last_anchor_visible = bool(pack.metadata.get("anchor_visible", False))
-            anchor_detections = pack.anchor_detections
-            anchor_pose_detections = pack.anchor_pose_detections
+            anchor_visible_raw = bool(pack.metadata.get("anchor_visible", False))
+            anchor_update_suppressed = self._anchor_updates_suppressed(timestamp_s=float(frame_packet.timestamp_s))
+            self._last_anchor_visible_raw = anchor_visible_raw
+            self._last_anchor_update_suppressed = bool(anchor_update_suppressed)
+            self._last_anchor_visible = bool(anchor_visible_raw and not anchor_update_suppressed)
+            anchor_detections = () if anchor_update_suppressed else pack.anchor_detections
+            anchor_pose_detections = () if anchor_update_suppressed else pack.anchor_pose_detections
             if anchor_pose_detections:
                 anchor_detection = max(anchor_pose_detections, key=lambda detection: float(detection.score))
                 self._filter.update_anchor(
@@ -637,7 +675,10 @@ class IsaacStandaloneRuntime:
                     "timestamp_s": float(frame_packet.timestamp_s),
                     "kind": "frame_pack",
                     "frame_index": int(frame_packet.frame_index),
-                    "anchor_visible": bool(pack.metadata.get("anchor_visible", False)),
+                    "anchor_visible": bool(self._last_anchor_visible),
+                    "anchor_visible_raw": bool(anchor_visible_raw),
+                    "anchor_visible_effective": bool(self._last_anchor_visible),
+                    "anchor_update_suppressed": bool(anchor_update_suppressed),
                     "detected_tag_ids": list(pack.metadata.get("detected_tag_ids", [])),
                     "auxiliary_visible_count": int(auxiliary_summary_payload.get("visible_count", 0)),
                     "native_auxiliary_pose_ready_count": int(auxiliary_summary_payload.get("native_pose_ready_count", 0)),

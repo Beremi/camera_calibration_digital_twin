@@ -7,6 +7,18 @@ The first-pass suite under `output/isaac_runs/latest_first_pass_suite` remains
 the immutable publication baseline. This branch is for estimator-quality
 diagnosis and repair only.
 
+## Preserved Checkpoint
+
+The pre-draft checkpoint for this branch is commit `b3f23c9`.
+
+It is preserved in:
+
+- `docs/second_pass_draft_lock.json`
+- `output/isaac_runs/second_pass_checkpoint_isolation_seed_007/`
+
+That checkpoint captures the six-run seed-007 isolation bundle that identified
+the current branch-level root cause as a fused mechanization or weighting issue.
+
 ## Scope
 
 The active question on `feature/isaac-estimator-second-pass` is:
@@ -143,3 +155,18 @@ The new runtime/reporting path now separates:
 
 That bundle is the required evidence base before changing the online filter or
 replacing the smoother core.
+
+## First-Draft Closure Path
+
+The next closure target on this branch is the minimum second-pass publication
+draft, not a broad benchmark campaign. The intended draft bundle is:
+
+- one locked fused nominal configuration selected by
+  `scripts/run_isaac_second_pass_tuning.py`
+- one 18-run suite executed by `scripts/run_isaac_second_pass_draft_suite.py`
+- one separate second-pass artifact bundle under
+  `output/isaac_runs/latest_second_pass_suite/analysis/`
+- one separate draft paper compiled from
+  `report_tex/second_pass_publication_draft.tex`
+- one local-only presentation bundle under
+  `output/isaac_runs/latest_second_pass_suite/presentation/`

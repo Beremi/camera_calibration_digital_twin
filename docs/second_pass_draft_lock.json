@@ -1,0 +1,38 @@
+{
+  "checkpoint": {
+    "classification": "fused_mechanization_or_weighting_bug",
+    "commit": "b3f23c9",
+    "canonical_seed": 7,
+    "isolation_bundle_dir": "output/isaac_runs/second_pass_checkpoint_isolation_seed_007",
+    "isolation_docs_path": "docs/isaac_second_pass_isolation_summary.md",
+    "isolation_run_ids": [
+      "second_pass_visual_closed_loop_anchor_only_seed_007",
+      "second_pass_fused_closed_loop_anchor_only_seed_007",
+      "second_pass_visual_closed_loop_aux_estimation_only_seed_007",
+      "second_pass_fused_closed_loop_aux_estimation_only_seed_007",
+      "second_pass_visual_closed_loop_aux_for_control_seed_007",
+      "second_pass_fused_closed_loop_aux_for_control_seed_007"
+    ]
+  },
+  "draft_selection": {
+    "fused_nominal_backend": "lightweight",
+    "fused_nominal_covariance_scales": {
+      "accel_process_covariance_scale": null,
+      "anchor_vision_covariance_scale": null,
+      "aux_vision_covariance_scale": null,
+      "gyro_process_covariance_scale": null,
+      "imu_process_covariance_scale": 4.0,
+      "post_relocalization_covariance_scale": 1.0,
+      "vision_covariance_scale": 1.0
+    },
+    "fused_nominal_reference_run_id": "second_pass_fused_aux_control_seed_007_imu_scale_4",
+    "media_source_run_ids": [],
+    "selected_condition_labels": [
+      "nominal_full_anchor",
+      "intermittent_anchor",
+      "servo_stress"
+    ],
+    "suite_run_ids": [],
+    "visual_nominal_reference_run_id": "second_pass_visual_closed_loop_aux_for_control_seed_007"
+  }
+}

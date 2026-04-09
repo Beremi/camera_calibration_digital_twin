@@ -1,0 +1,13 @@
+name: hero_capture
+fps: 15
+duration_s: 24.0
+layout: hero
+primary_run_role: fused_nominal
+overlay_panels:
+  - waypoint
+  - anchor_visibility
+  - uncertainty_radius
+  - command_vs_realized
+stills:
+  - hero_observer
+  - hero_phone_view

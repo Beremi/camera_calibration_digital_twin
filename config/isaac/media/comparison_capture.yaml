@@ -1,0 +1,11 @@
+name: comparison_capture
+fps: 15
+duration_s: 24.0
+layout: split_screen
+left_role: visual_condition
+right_role: fused_condition
+overlay_panels:
+  - waypoint_error
+  - position_error
+  - uncertainty_radius
+  - completion_fraction

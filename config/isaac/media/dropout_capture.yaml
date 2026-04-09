@@ -1,0 +1,11 @@
+name: dropout_capture
+fps: 15
+duration_s: 24.0
+layout: split_screen_dropout
+left_role: visual_dropout
+right_role: fused_dropout
+overlay_panels:
+  - dropout_interval
+  - anchor_visibility
+  - uncertainty_radius
+  - completion_fraction

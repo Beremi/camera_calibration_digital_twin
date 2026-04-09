@@ -436,6 +436,7 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
     camera_config = _load_config_snapshot(resolved, "camera")
     imu_config = _load_config_snapshot(resolved, "imu")
     actuation_config = _load_config_snapshot(resolved, "actuation")
+    visibility_config = _load_config_snapshot(resolved, "visibility")
 
     timestamps = _timestamp_values(bundle.raw)
     duration_s = 0.0 if not timestamps else float(max(timestamps) - min(timestamps))
@@ -513,8 +514,30 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
         if str(row.get("kind", "")) == "frame_pack"
     ]
     anchor_visible_flags = [bool(row.get("anchor_visible", False)) for row in frame_pack_rows]
+    anchor_visible_raw_flags = [
+        bool(row.get("anchor_visible_raw", row.get("anchor_visible", False))) for row in frame_pack_rows
+    ]
+    anchor_visible_effective_flags = [
+        bool(row.get("anchor_visible_effective", row.get("anchor_visible", False))) for row in frame_pack_rows
+    ]
+    anchor_update_suppressed_flags = [
+        bool(row.get("anchor_update_suppressed", False)) for row in frame_pack_rows
+    ]
     anchor_visible_fraction = (
         None if not anchor_visible_flags else float(sum(anchor_visible_flags) / len(anchor_visible_flags))
+    )
+    anchor_visible_raw_fraction = (
+        None if not anchor_visible_raw_flags else float(sum(anchor_visible_raw_flags) / len(anchor_visible_raw_flags))
+    )
+    anchor_visible_effective_fraction = (
+        None
+        if not anchor_visible_effective_flags
+        else float(sum(anchor_visible_effective_flags) / len(anchor_visible_effective_flags))
+    )
+    anchor_update_suppressed_fraction = (
+        None
+        if not anchor_update_suppressed_flags
+        else float(sum(anchor_update_suppressed_flags) / len(anchor_update_suppressed_flags))
     )
     anchor_innovation_norms = [
         float(row.get("innovation_diagnostics", {}).get("last_innovation_norm", 0.0))
@@ -597,6 +620,7 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
             "estimator_mode": bundle.manifest.estimator_mode,
             "controller_mode": bundle.manifest.controller_mode,
             "bootstrap_control_policy": bundle.manifest.bootstrap_control_policy,
+            "visibility_preset": visibility_config.get("name"),
         },
         "counts": {
             "camera_frames": len(bundle.raw["camera_frames"]),
@@ -622,6 +646,9 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
             "max_position_radius_95_m": None if not position_radii else float(np.max(position_radii)),
             "mean_innovation_norm": None if not innovation_norms else float(np.mean(innovation_norms)),
             "anchor_visible_fraction": anchor_visible_fraction,
+            "anchor_visible_raw_fraction": anchor_visible_raw_fraction,
+            "anchor_visible_effective_fraction": anchor_visible_effective_fraction,
+            "anchor_update_suppressed_fraction": anchor_update_suppressed_fraction,
             "anchor_relocalization_count": float(anchor_relocalization_count),
             "mean_anchor_innovation_norm": None
             if not anchor_innovation_norms
@@ -672,6 +699,8 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
             "auxiliary_tag_count": auxiliary_tag_position_stats["auxiliary_tag_count"],
             "anchor_relocalization_count": float(anchor_relocalization_count),
             "anchor_visible_fraction": anchor_visible_fraction,
+            "anchor_visible_raw_fraction": anchor_visible_raw_fraction,
+            "anchor_visible_effective_fraction": anchor_visible_effective_fraction,
         },
         "control": {
             "saturation_fraction": float(saturation_fraction),

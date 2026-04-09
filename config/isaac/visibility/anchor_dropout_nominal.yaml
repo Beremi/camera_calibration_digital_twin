@@ -1,0 +1,8 @@
+name: anchor_dropout_nominal
+enabled: true
+description: Deterministic anchor-update suppression windows for the second-pass intermittent-anchor condition.
+suppressed_intervals_s:
+  - [1.2, 1.6]
+  - [3.0, 3.4]
+  - [5.1, 5.5]
+  - [6.8, 7.2]

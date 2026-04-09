@@ -223,6 +223,7 @@ class IsaacStandaloneRuntime:
         self._last_anchor_visible = False
         self._last_anchor_visible_raw = False
         self._last_anchor_update_suppressed = False
+        self._anchor_lock_acquired = False
         self._last_detections = ()
         self._physics_dt_s = 1.0 / float(self.config.config_payloads["scene"]["physics_rate_hz"])
         self._sim_time_s = 0.0
@@ -238,6 +239,9 @@ class IsaacStandaloneRuntime:
         self._tag_feedback_diagnostics: dict[int, dict[str, Any]] = {}
         self._last_camera_intrinsics_snapshot: dict[str, Any] | None = None
         self._smoother_interval_imu_packets: list[Any] = []
+        self._camera_interval_imu_packets: list[Any] = []
+        self._last_camera_timestamp_s: float | None = None
+        self._disable_imu_prediction_while_anchor_suppressed = False
 
     @property
     def writer(self) -> IsaacRunWriter:
@@ -333,6 +337,34 @@ class IsaacStandaloneRuntime:
             self._filter.accel_process_covariance_scale = float(filter_config.get("accel_process_covariance_scale"))
         self._filter.post_relocalization_covariance_scale = float(
             filter_config.get("post_relocalization_covariance_scale", 1.0)
+        )
+        self._filter.allow_anchor_reacquisition_after_first_lock = bool(
+            filter_config.get("allow_anchor_reacquisition_after_first_lock", True)
+        )
+        if filter_config.get("dropout_post_reacquisition_covariance_scale") not in (None, ""):
+            self._filter.dropout_post_reacquisition_covariance_scale = float(
+                filter_config.get("dropout_post_reacquisition_covariance_scale")
+            )
+        if filter_config.get("dropout_max_reacquisition_position_correction_m") not in (None, ""):
+            self._filter.dropout_max_reacquisition_position_correction_m = float(
+                filter_config.get("dropout_max_reacquisition_position_correction_m")
+            )
+        if filter_config.get("dropout_max_reacquisition_rotation_correction_deg") not in (None, ""):
+            self._filter.dropout_max_reacquisition_rotation_correction_deg = float(
+                filter_config.get("dropout_max_reacquisition_rotation_correction_deg")
+            )
+        if filter_config.get("dropout_max_reacquisition_velocity_correction_mps") not in (None, ""):
+            self._filter.dropout_max_reacquisition_velocity_correction_mps = float(
+                filter_config.get("dropout_max_reacquisition_velocity_correction_mps")
+            )
+        if filter_config.get("anchor_reacquisition_max_innovation_norm") not in (None, ""):
+            self._filter.anchor_reacquisition_max_innovation_norm = float(
+                filter_config.get("anchor_reacquisition_max_innovation_norm")
+            )
+        if filter_config.get("anchor_reacquisition_max_nis") not in (None, ""):
+            self._filter.anchor_reacquisition_max_nis = float(filter_config.get("anchor_reacquisition_max_nis"))
+        self._disable_imu_prediction_while_anchor_suppressed = bool(
+            filter_config.get("disable_imu_prediction_while_anchor_suppressed", False)
         )
         smoother_backend = str(smoother_config.get("backend", "lightweight")).strip().lower()
         if smoother_backend == "windowed_ba":
@@ -486,6 +518,90 @@ class IsaacStandaloneRuntime:
                 return True
         return False
 
+    def _write_dropout_debug_event(
+        self,
+        *,
+        timestamp_s: float,
+        frame_index: int,
+        event_kind: str,
+        attempted: bool,
+        accepted: bool,
+        reason: str,
+        is_reacquisition: bool = False,
+        pose_innovation_norm_m: float | None = None,
+        orientation_innovation_norm_deg: float | None = None,
+        velocity_innovation_norm_mps: float | None = None,
+        relocalization_correction_norm_m: float | None = None,
+        post_update_covariance_trace: float | None = None,
+    ) -> None:
+        self._writer.write_dropout_debug_event(
+            {
+                "timestamp_s": float(timestamp_s),
+                "frame_index": int(frame_index),
+                "event_kind": str(event_kind),
+                "anchor_update_attempted": bool(attempted),
+                "accepted": bool(accepted),
+                "reason": str(reason),
+                "is_reacquisition": bool(is_reacquisition),
+                "pose_innovation_norm_m": None if pose_innovation_norm_m is None else float(pose_innovation_norm_m),
+                "orientation_innovation_norm_deg": None
+                if orientation_innovation_norm_deg is None
+                else float(orientation_innovation_norm_deg),
+                "velocity_innovation_norm_mps": None
+                if velocity_innovation_norm_mps is None
+                else float(velocity_innovation_norm_mps),
+                "relocalization_correction_norm_m": None
+                if relocalization_correction_norm_m is None
+                else float(relocalization_correction_norm_m),
+                "post_update_covariance_trace": None
+                if post_update_covariance_trace is None
+                else float(post_update_covariance_trace),
+            }
+        )
+
+    def _write_dropout_debug_frame(
+        self,
+        *,
+        frame_index: int,
+        timestamp_s: float,
+        frame_packet: IsaacCameraFramePacket,
+        suppression_active: bool,
+        imu_prediction_disabled: bool,
+    ) -> None:
+        if self._filter is None:
+            return
+        gt_position_world_m = np.asarray(
+            frame_packet.extrinsics_snapshot.get("position_world_m", [0.0, 0.0, 0.0]),
+            dtype=np.float64,
+        ).reshape(3)
+        position_error_norm_m = float(
+            np.linalg.norm(np.asarray(self._filter.state.position_world_m, dtype=np.float64).reshape(3) - gt_position_world_m)
+        )
+        covariance = sanitize_covariance(np.asarray(self._filter.covariance, dtype=np.float64))
+        eigenvalues = np.linalg.eigvalsh(covariance)
+        propagation_dt_s = 0.0 if self._last_camera_timestamp_s is None else float(timestamp_s - self._last_camera_timestamp_s)
+        self._writer.write_dropout_debug_frame(
+            {
+                "timestamp_s": float(timestamp_s),
+                "frame_index": int(frame_index),
+                "anchor_visible_raw": bool(self._last_anchor_visible_raw),
+                "anchor_visible_effective": bool(self._last_anchor_visible),
+                "suppression_active": bool(suppression_active),
+                "imu_prediction_disabled": bool(imu_prediction_disabled),
+                "imu_packets_since_last_frame": int(len(self._camera_interval_imu_packets)),
+                "propagation_dt_s": float(max(propagation_dt_s, 0.0)),
+                "position_error_norm_m": position_error_norm_m,
+                "velocity_norm_mps": float(np.linalg.norm(np.asarray(self._filter.state.velocity_world_mps, dtype=np.float64))),
+                "gyro_bias_norm_rps": float(np.linalg.norm(np.asarray(self._filter.state.gyro_bias_rps, dtype=np.float64))),
+                "accel_bias_norm_mps2": float(np.linalg.norm(np.asarray(self._filter.state.accel_bias_mps2, dtype=np.float64))),
+                "covariance_trace": float(np.trace(covariance)),
+                "covariance_min_eigenvalue": float(np.min(eigenvalues)),
+                "covariance_max_eigenvalue": float(np.max(eigenvalues)),
+            }
+        )
+        self._last_camera_timestamp_s = float(timestamp_s)
+        self._camera_interval_imu_packets.clear()
+
     def _log_realized_state(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         if self._robot_binding is None:
             raise RuntimeError("Robot binding missing.")
@@ -575,6 +691,7 @@ class IsaacStandaloneRuntime:
             )
             self._counts["imu_packets"] += 1
             self._smoother_interval_imu_packets.append(packet)
+            self._camera_interval_imu_packets.append(packet)
         return tuple(packets)
 
     def _process_camera(self, timestamps: TimestampTriplet) -> None:
@@ -632,22 +749,82 @@ class IsaacStandaloneRuntime:
                 self._writer.write_detection(detection)
                 self._counts["detections"] += 1
             self._last_detections = pack.detections
+            previous_anchor_visible = bool(self._last_anchor_visible)
             anchor_visible_raw = bool(pack.metadata.get("anchor_visible", False))
             anchor_update_suppressed = self._anchor_updates_suppressed(timestamp_s=float(frame_packet.timestamp_s))
             self._last_anchor_visible_raw = anchor_visible_raw
             self._last_anchor_update_suppressed = bool(anchor_update_suppressed)
             self._last_anchor_visible = bool(anchor_visible_raw and not anchor_update_suppressed)
-            anchor_detections = () if anchor_update_suppressed else pack.anchor_detections
-            anchor_pose_detections = () if anchor_update_suppressed else pack.anchor_pose_detections
-            if anchor_pose_detections:
+            anchor_detections = tuple(pack.anchor_detections)
+            anchor_pose_detections = tuple(pack.anchor_pose_detections)
+            anchor_measurement_std_m = float(
+                self.config.config_payloads["estimation"].get("filter", {}).get("anchor_measurement_std_m", 0.01)
+            )
+            is_reacquisition = bool(self._anchor_lock_acquired and not previous_anchor_visible and self._last_anchor_visible)
+            anchor_update_result = None
+            if not anchor_visible_raw:
+                self._write_dropout_debug_event(
+                    timestamp_s=float(frame_packet.timestamp_s),
+                    frame_index=int(frame_packet.frame_index),
+                    event_kind="anchor_visibility",
+                    attempted=False,
+                    accepted=False,
+                    reason="not_visible",
+                )
+            elif anchor_update_suppressed:
+                self._write_dropout_debug_event(
+                    timestamp_s=float(frame_packet.timestamp_s),
+                    frame_index=int(frame_packet.frame_index),
+                    event_kind="anchor_visibility",
+                    attempted=False,
+                    accepted=False,
+                    reason="suppressed_window",
+                )
+            elif self._anchor_lock_acquired and not self._filter.allow_anchor_reacquisition_after_first_lock:
+                self._write_dropout_debug_event(
+                    timestamp_s=float(frame_packet.timestamp_s),
+                    frame_index=int(frame_packet.frame_index),
+                    event_kind="anchor_update",
+                    attempted=False,
+                    accepted=False,
+                    reason="first_lock_only_mode",
+                    is_reacquisition=is_reacquisition,
+                )
+            elif anchor_pose_detections:
                 anchor_detection = max(anchor_pose_detections, key=lambda detection: float(detection.score))
-                self._filter.update_anchor(
+                anchor_update_result = self._filter.update_anchor(
                     tag_detection=anchor_detection,
                     tag_pose=self._tag_pose_map[int(anchor_detection.tag_id)],
-                    measurement_std_m=float(self.config.config_payloads["estimation"].get("filter", {}).get("anchor_measurement_std_m", 0.01)),
+                    measurement_std_m=anchor_measurement_std_m,
+                    is_reacquisition=is_reacquisition,
+                )
+                if bool(anchor_update_result.accepted):
+                    self._anchor_lock_acquired = True
+                self._write_dropout_debug_event(
+                    timestamp_s=float(frame_packet.timestamp_s),
+                    frame_index=int(frame_packet.frame_index),
+                    event_kind="anchor_update",
+                    attempted=True,
+                    accepted=bool(anchor_update_result.accepted),
+                    reason=str(anchor_update_result.reason),
+                    is_reacquisition=bool(anchor_update_result.is_reacquisition),
+                    pose_innovation_norm_m=float(anchor_update_result.innovation_norm_m),
+                    orientation_innovation_norm_deg=float(anchor_update_result.orientation_innovation_norm_deg),
+                    velocity_innovation_norm_mps=float(anchor_update_result.velocity_innovation_norm_mps),
+                    relocalization_correction_norm_m=float(anchor_update_result.relocalization_correction_norm_m),
+                    post_update_covariance_trace=float(anchor_update_result.post_update_covariance_trace),
                 )
             elif anchor_detections:
                 self._filter.rejected_updates_count += len(anchor_detections)
+                self._write_dropout_debug_event(
+                    timestamp_s=float(frame_packet.timestamp_s),
+                    frame_index=int(frame_packet.frame_index),
+                    event_kind="anchor_update",
+                    attempted=True,
+                    accepted=False,
+                    reason="no_pose_solution",
+                    is_reacquisition=is_reacquisition,
+                )
             auxiliary_detections = tuple(detection for detection in pack.detections if not detection.is_anchor)
             auxiliary_update_summary = self._filter.update_aux_tags(
                 tag_detections=auxiliary_detections,
@@ -699,6 +876,15 @@ class IsaacStandaloneRuntime:
                     "auxiliary_rejection_reasons": dict(auxiliary_summary_payload.get("rejection_reason_counts", {})),
                     "auxiliary_update_decisions": list(auxiliary_summary_payload.get("decisions", [])),
                 }
+            )
+            self._write_dropout_debug_frame(
+                frame_index=int(frame_packet.frame_index),
+                timestamp_s=float(frame_packet.timestamp_s),
+                frame_packet=frame_packet,
+                suppression_active=bool(anchor_update_suppressed),
+                imu_prediction_disabled=bool(
+                    anchor_update_suppressed and self._disable_imu_prediction_while_anchor_suppressed
+                ),
             )
 
     def _log_filter_and_uncertainty(self) -> None:
@@ -1088,7 +1274,11 @@ class IsaacStandaloneRuntime:
             ee_orientation_wxyz=ee_orientation_wxyz,
         )
         if self._filter is not None and imu_packets:
-            self._filter.predict(imu_packets)
+            suppression_active = self._anchor_updates_suppressed(timestamp_s=float(self._sim_time_s))
+            if suppression_active and self._disable_imu_prediction_while_anchor_suppressed:
+                pass
+            else:
+                self._filter.predict(imu_packets)
         self._process_camera(timestamps)
         self._log_filter_and_uncertainty()
         self._log_smoother()

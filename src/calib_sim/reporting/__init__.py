@@ -7,6 +7,10 @@ from typing import Any
 
 from calib_sim.reporting.isaac_report_figures import write_isaac_estimator_quality_figures, write_isaac_report_figures
 from calib_sim.reporting.isaac_report_metrics import compute_isaac_estimator_quality, compute_isaac_run_metrics
+from calib_sim.reporting.isaac_second_pass_dropout_debug import (
+    build_second_pass_dropout_debug_bundle,
+    generate_second_pass_dropout_debug_artifacts,
+)
 from calib_sim.reporting.isaac_report_tables import write_isaac_report_tables
 
 
@@ -104,6 +108,8 @@ __all__ = [
     "compute_isaac_run_metrics",
     "compute_isaac_estimator_quality",
     "generate_isaac_report_artifacts",
+    "generate_second_pass_dropout_debug_artifacts",
+    "build_second_pass_dropout_debug_bundle",
     "is_complete_run",
     "write_isaac_estimator_quality_figures",
     "write_isaac_report_figures",

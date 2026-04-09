@@ -96,6 +96,49 @@ class IsaacRunWriter:
     def write_estimator_input(self, payload: dict[str, Any]) -> None:
         self._append_jsonl(self.raw_dir / "estimator_input.jsonl", dict(payload))
 
+    def write_dropout_debug_frame(self, payload: dict[str, Any]) -> None:
+        self._append_csv_row(
+            self.raw_dir / "dropout_debug_frames.csv",
+            [
+                "timestamp_s",
+                "frame_index",
+                "anchor_visible_raw",
+                "anchor_visible_effective",
+                "suppression_active",
+                "imu_prediction_disabled",
+                "imu_packets_since_last_frame",
+                "propagation_dt_s",
+                "position_error_norm_m",
+                "velocity_norm_mps",
+                "gyro_bias_norm_rps",
+                "accel_bias_norm_mps2",
+                "covariance_trace",
+                "covariance_min_eigenvalue",
+                "covariance_max_eigenvalue",
+            ],
+            payload,
+        )
+
+    def write_dropout_debug_event(self, payload: dict[str, Any]) -> None:
+        self._append_csv_row(
+            self.raw_dir / "dropout_debug_events.csv",
+            [
+                "timestamp_s",
+                "frame_index",
+                "event_kind",
+                "anchor_update_attempted",
+                "accepted",
+                "reason",
+                "is_reacquisition",
+                "pose_innovation_norm_m",
+                "orientation_innovation_norm_deg",
+                "velocity_innovation_norm_mps",
+                "relocalization_correction_norm_m",
+                "post_update_covariance_trace",
+            ],
+            payload,
+        )
+
     def write_imu_packet(self, packet: IsaacImuPacket) -> None:
         self._append_csv_row(self.raw_dir / "imu.csv", packet.csv_fieldnames(), packet.to_csv_row())
 

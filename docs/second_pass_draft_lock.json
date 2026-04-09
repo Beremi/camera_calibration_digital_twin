@@ -3,8 +3,10 @@
     "canonical_seed": 7,
     "classification": "fused_mechanization_or_weighting_bug",
     "commit": "b3f23c9",
-    "current_work_packet_commit": "4c565ae",
+    "current_work_packet_commit": "334e5a2",
     "draft_selection_status": "blocked_pending_fused_intermittent_anchor_fix",
+    "dropout_debug_bundle_dir": "output/isaac_runs/latest_second_pass_dropout_debug",
+    "dropout_debug_docs_path": "docs/isaac_second_pass_dropout_debug.md",
     "exploratory_run_ids": [
       "second_pass_explore_fused_intermittent_aux_estimation_only_seed_007",
       "second_pass_explore_fused_intermittent_aux_for_control_seed_007",

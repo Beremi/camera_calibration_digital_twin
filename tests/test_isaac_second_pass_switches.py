@@ -43,6 +43,16 @@ def test_run_script_dry_run_exposes_auxiliary_isolation_switches(tmp_path: Path)
             "8.0",
             "--post-relocalization-covariance-scale",
             "4.0",
+            "--no-allow-anchor-reacquisition-after-first-lock",
+            "--disable-imu-prediction-while-anchor-suppressed",
+            "--dropout-post-reacquisition-covariance-scale",
+            "8.0",
+            "--dropout-max-reacquisition-position-correction-m",
+            "0.05",
+            "--dropout-max-reacquisition-rotation-correction-deg",
+            "5.0",
+            "--dropout-max-reacquisition-velocity-correction-mps",
+            "0.20",
             "--visibility-config",
             "config/isaac/visibility/anchor_dropout_nominal.yaml",
             "--no-promote-global-latest",
@@ -68,4 +78,10 @@ def test_run_script_dry_run_exposes_auxiliary_isolation_switches(tmp_path: Path)
     assert estimation_filter["gyro_process_covariance_scale"] == 7.0
     assert estimation_filter["accel_process_covariance_scale"] == 8.0
     assert estimation_filter["post_relocalization_covariance_scale"] == 4.0
+    assert estimation_filter["allow_anchor_reacquisition_after_first_lock"] is False
+    assert estimation_filter["disable_imu_prediction_while_anchor_suppressed"] is True
+    assert estimation_filter["dropout_post_reacquisition_covariance_scale"] == 8.0
+    assert estimation_filter["dropout_max_reacquisition_position_correction_m"] == 0.05
+    assert estimation_filter["dropout_max_reacquisition_rotation_correction_deg"] == 5.0
+    assert estimation_filter["dropout_max_reacquisition_velocity_correction_mps"] == 0.2
     assert payload["config_snapshots"]["visibility"]["name"] == "anchor_dropout_nominal"

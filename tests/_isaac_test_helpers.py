@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 import shutil
@@ -845,6 +846,219 @@ def make_second_pass_isolation_runs(output_root: Path) -> list[Path]:
             json.dumps({"use_aux_map_for_control": use_control}, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        run_dirs.append(run_dir)
+    return run_dirs
+
+
+def make_second_pass_dropout_debug_runs(output_root: Path) -> list[Path]:
+    output_root.mkdir(parents=True, exist_ok=True)
+    intervals = [[1.2, 1.6], [3.0, 3.4], [5.1, 5.5], [6.8, 7.2]]
+    specs = [
+        (
+            "second_pass_dropout_debug_visual_seed_007",
+            "visual_reference",
+            0.018,
+            0.021,
+            1.0,
+            93.0,
+            7.0,
+            [0.010, 0.012, 0.018, 0.022, 0.024, 0.021, 0.019],
+            [0.001, 0.001, 0.0015, 0.0015, 0.0015, 0.0014, 0.0014],
+            0.03,
+            "stable_reference",
+        ),
+        (
+            "second_pass_dropout_debug_fused_seed_007",
+            "fused_baseline",
+            0.240,
+            0.062,
+            1.0,
+            18.0,
+            2500.0,
+            [0.012, 0.015, 0.020, 0.032, 0.041, 0.360, 0.410],
+            [0.002, 0.002, 0.0025, 0.0025, 0.003, 0.004, 0.004],
+            0.32,
+            "reacquisition_update_problem",
+        ),
+        (
+            "second_pass_dropout_debug_fused_no_reacq_seed_007",
+            "fused_no_reacquisition",
+            0.210,
+            0.054,
+            1.0,
+            30.0,
+            180.0,
+            [0.012, 0.020, 0.060, 0.120, 0.240, 0.260, 0.270],
+            [0.002, 0.0022, 0.003, 0.004, 0.005, 0.005, 0.005],
+            None,
+            "propagation_process_problem",
+        ),
+        (
+            "second_pass_dropout_debug_fused_no_imu_during_suppression_seed_007",
+            "fused_no_imu_during_suppression",
+            0.032,
+            0.025,
+            1.0,
+            91.0,
+            8.0,
+            [0.012, 0.013, 0.016, 0.018, 0.019, 0.020, 0.019],
+            [0.002, 0.002, 0.002, 0.002, 0.002, 0.002, 0.002],
+            0.02,
+            "stable_reference",
+        ),
+        (
+            "second_pass_dropout_debug_fused_covinfl_seed_007",
+            "fused_reacquisition_covariance_inflation",
+            0.041,
+            0.028,
+            1.0,
+            84.0,
+            15.0,
+            [0.012, 0.014, 0.020, 0.026, 0.032, 0.050, 0.044],
+            [0.002, 0.002, 0.0025, 0.003, 0.0035, 0.004, 0.004],
+            0.05,
+            "undetermined",
+        ),
+        (
+            "second_pass_dropout_debug_fused_clipcorr_seed_007",
+            "fused_reacquisition_correction_clipping",
+            0.038,
+            0.027,
+            1.0,
+            88.0,
+            11.0,
+            [0.012, 0.015, 0.021, 0.028, 0.035, 0.060, 0.052],
+            [0.002, 0.002, 0.0025, 0.003, 0.0035, 0.004, 0.004],
+            0.05,
+            "undetermined",
+        ),
+    ]
+    frame_times = [0.8, 1.0, 1.25, 1.45, 1.58, 1.7, 1.9]
+    run_dirs: list[Path] = []
+    frame_fieldnames = [
+        "timestamp_s",
+        "frame_index",
+        "anchor_visible_raw",
+        "anchor_visible_effective",
+        "suppression_active",
+        "imu_prediction_disabled",
+        "imu_packets_since_last_frame",
+        "propagation_dt_s",
+        "position_error_norm_m",
+        "velocity_norm_mps",
+        "gyro_bias_norm_rps",
+        "accel_bias_norm_mps2",
+        "covariance_trace",
+        "covariance_min_eigenvalue",
+        "covariance_max_eigenvalue",
+    ]
+    event_fieldnames = [
+        "timestamp_s",
+        "frame_index",
+        "event_kind",
+        "anchor_update_attempted",
+        "accepted",
+        "reason",
+        "is_reacquisition",
+        "pose_innovation_norm_m",
+        "orientation_innovation_norm_deg",
+        "velocity_innovation_norm_mps",
+        "relocalization_correction_norm_m",
+        "post_update_covariance_trace",
+    ]
+    for run_id, debug_mode, pos_err, waypoint_err, completion, coverage, nees, frame_errors, bias_norms, reacq_corr, hint in specs:
+        run_dir = output_root / run_id
+        if run_dir.exists():
+            shutil.rmtree(run_dir)
+        (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
+        (run_dir / "raw").mkdir(parents=True, exist_ok=True)
+        (run_dir / "config_snapshot").mkdir(parents=True, exist_ok=True)
+        metrics = {
+            "trajectory": {"mean_position_error_m": pos_err},
+            "control": {"mean_waypoint_error_m": waypoint_err, "completion_fraction": completion},
+            "uncertainty_calibration": {
+                "empirical_95_coverage_percent": coverage,
+                "pose_nees": nees,
+            },
+        }
+        quality = {
+            "summary": {
+                "anchor_mean_reprojection_rmse_px": 0.20,
+                "auxiliary_mean_reprojection_rmse_px": 0.40,
+                "mean_smoother_correction_norm_m": 0.03,
+            }
+        }
+        (run_dir / "analysis" / "metrics.json").write_text(
+            json.dumps(metrics, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "analysis" / "estimator_quality.json").write_text(
+            json.dumps(quality, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "config_snapshot" / "visibility.json").write_text(
+            json.dumps({"name": "anchor_dropout_nominal", "suppressed_intervals_s": intervals}, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        with (run_dir / "raw" / "dropout_debug_frames.csv").open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=frame_fieldnames)
+            writer.writeheader()
+            for index, (timestamp_s, frame_error, bias_norm) in enumerate(zip(frame_times, frame_errors, bias_norms)):
+                suppression_active = 1.2 <= float(timestamp_s) <= 1.6
+                writer.writerow(
+                    {
+                        "timestamp_s": timestamp_s,
+                        "frame_index": index,
+                        "anchor_visible_raw": True,
+                        "anchor_visible_effective": not suppression_active,
+                        "suppression_active": suppression_active,
+                        "imu_prediction_disabled": debug_mode == "fused_no_imu_during_suppression" and suppression_active,
+                        "imu_packets_since_last_frame": 6,
+                        "propagation_dt_s": 0.2 if index else 0.0,
+                        "position_error_norm_m": frame_error,
+                        "velocity_norm_mps": 0.04 + 0.01 * index,
+                        "gyro_bias_norm_rps": bias_norm,
+                        "accel_bias_norm_mps2": bias_norm,
+                        "covariance_trace": 0.01 + 0.01 * index,
+                        "covariance_min_eigenvalue": 1e-4,
+                        "covariance_max_eigenvalue": 0.01 + 0.01 * index,
+                    }
+                )
+        with (run_dir / "raw" / "dropout_debug_events.csv").open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=event_fieldnames)
+            writer.writeheader()
+            writer.writerow(
+                {
+                    "timestamp_s": 1.25,
+                    "frame_index": 2,
+                    "event_kind": "anchor_visibility",
+                    "anchor_update_attempted": False,
+                    "accepted": False,
+                    "reason": "suppressed_window",
+                    "is_reacquisition": False,
+                    "pose_innovation_norm_m": "",
+                    "orientation_innovation_norm_deg": "",
+                    "velocity_innovation_norm_mps": "",
+                    "relocalization_correction_norm_m": "",
+                    "post_update_covariance_trace": "",
+                }
+            )
+            writer.writerow(
+                {
+                    "timestamp_s": 1.70,
+                    "frame_index": 5,
+                    "event_kind": "anchor_update",
+                    "anchor_update_attempted": True,
+                    "accepted": reacq_corr is not None,
+                    "reason": "accepted" if reacq_corr is not None else "first_lock_only_mode",
+                    "is_reacquisition": True,
+                    "pose_innovation_norm_m": 0.32 if reacq_corr is not None else "",
+                    "orientation_innovation_norm_deg": 4.0 if reacq_corr is not None else "",
+                    "velocity_innovation_norm_mps": 0.18 if reacq_corr is not None else "",
+                    "relocalization_correction_norm_m": "" if reacq_corr is None else reacq_corr,
+                    "post_update_covariance_trace": 0.12,
+                }
+            )
         run_dirs.append(run_dir)
     return run_dirs
 

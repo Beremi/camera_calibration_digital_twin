@@ -72,6 +72,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gyro-process-covariance-scale", type=float, default=None)
     parser.add_argument("--accel-process-covariance-scale", type=float, default=None)
     parser.add_argument("--post-relocalization-covariance-scale", type=float, default=None)
+    parser.add_argument(
+        "--allow-anchor-reacquisition-after-first-lock",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
+    parser.add_argument(
+        "--disable-imu-prediction-while-anchor-suppressed",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
+    parser.add_argument("--dropout-post-reacquisition-covariance-scale", type=float, default=None)
+    parser.add_argument("--dropout-max-reacquisition-position-correction-m", type=float, default=None)
+    parser.add_argument("--dropout-max-reacquisition-rotation-correction-deg", type=float, default=None)
+    parser.add_argument("--dropout-max-reacquisition-velocity-correction-mps", type=float, default=None)
     return parser.parse_args()
 
 
@@ -121,6 +135,30 @@ def _apply_second_pass_overrides(config_payloads: dict[str, dict[str, object]], 
         filter_config["accel_process_covariance_scale"] = float(args.accel_process_covariance_scale)
     if args.post_relocalization_covariance_scale is not None:
         filter_config["post_relocalization_covariance_scale"] = float(args.post_relocalization_covariance_scale)
+    if args.allow_anchor_reacquisition_after_first_lock is not None:
+        filter_config["allow_anchor_reacquisition_after_first_lock"] = bool(
+            args.allow_anchor_reacquisition_after_first_lock
+        )
+    if args.disable_imu_prediction_while_anchor_suppressed is not None:
+        filter_config["disable_imu_prediction_while_anchor_suppressed"] = bool(
+            args.disable_imu_prediction_while_anchor_suppressed
+        )
+    if args.dropout_post_reacquisition_covariance_scale is not None:
+        filter_config["dropout_post_reacquisition_covariance_scale"] = float(
+            args.dropout_post_reacquisition_covariance_scale
+        )
+    if args.dropout_max_reacquisition_position_correction_m is not None:
+        filter_config["dropout_max_reacquisition_position_correction_m"] = float(
+            args.dropout_max_reacquisition_position_correction_m
+        )
+    if args.dropout_max_reacquisition_rotation_correction_deg is not None:
+        filter_config["dropout_max_reacquisition_rotation_correction_deg"] = float(
+            args.dropout_max_reacquisition_rotation_correction_deg
+        )
+    if args.dropout_max_reacquisition_velocity_correction_mps is not None:
+        filter_config["dropout_max_reacquisition_velocity_correction_mps"] = float(
+            args.dropout_max_reacquisition_velocity_correction_mps
+        )
 
 
 def _inject_optional_config(

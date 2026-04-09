@@ -138,6 +138,31 @@ def _position_mahalanobis_score(position_delta_world_m: np.ndarray, covariance: 
         return None
 
 
+def _rotation_delta_rotvec(current_rotation_wi: np.ndarray, measured_rotation_wi: np.ndarray) -> np.ndarray:
+    delta_rotation = np.asarray(current_rotation_wi, dtype=np.float64).reshape(3, 3).T @ np.asarray(
+        measured_rotation_wi,
+        dtype=np.float64,
+    ).reshape(3, 3)
+    rotvec, _ = cv2.Rodrigues(delta_rotation)
+    return np.asarray(rotvec, dtype=np.float64).reshape(3)
+
+
+def _apply_rotation_correction(current_rotation_wi: np.ndarray, rotation_correction_rotvec: np.ndarray) -> np.ndarray:
+    correction_rotation = rotation_matrix_from_rvec(np.asarray(rotation_correction_rotvec, dtype=np.float64).reshape(3))
+    return np.asarray(current_rotation_wi, dtype=np.float64).reshape(3, 3) @ correction_rotation
+
+
+def _clip_vector_norm(candidate: np.ndarray, *, max_norm: float | None) -> tuple[np.ndarray, bool]:
+    vector = np.asarray(candidate, dtype=np.float64).reshape(-1)
+    if max_norm in (None, ""):
+        return vector, False
+    limit = max(float(max_norm), 0.0)
+    norm = float(np.linalg.norm(vector))
+    if norm <= limit or norm < 1e-12:
+        return vector, False
+    return vector * (limit / norm), True
+
+
 @dataclass(slots=True)
 class AuxiliaryUpdateDecision:
     tag_id: int
@@ -191,6 +216,34 @@ class AuxiliaryUpdateSummary:
 
 
 @dataclass(slots=True)
+class AnchorUpdateResult:
+    accepted: bool
+    reason: str
+    innovation_norm_m: float
+    orientation_innovation_norm_deg: float
+    velocity_innovation_norm_mps: float
+    relocalization_correction_norm_m: float
+    post_update_covariance_trace: float
+    is_reacquisition: bool = False
+    relocalized: bool = False
+    anchor_nis: float | None = None
+
+    def as_json(self) -> dict[str, object]:
+        return {
+            "accepted": bool(self.accepted),
+            "reason": str(self.reason),
+            "innovation_norm_m": float(self.innovation_norm_m),
+            "orientation_innovation_norm_deg": float(self.orientation_innovation_norm_deg),
+            "velocity_innovation_norm_mps": float(self.velocity_innovation_norm_mps),
+            "relocalization_correction_norm_m": float(self.relocalization_correction_norm_m),
+            "post_update_covariance_trace": float(self.post_update_covariance_trace),
+            "is_reacquisition": bool(self.is_reacquisition),
+            "relocalized": bool(self.relocalized),
+            "anchor_nis": None if self.anchor_nis is None else float(self.anchor_nis),
+        }
+
+
+@dataclass(slots=True)
 class AnchoredOnlineFilter:
     state: MotionState
     covariance: np.ndarray
@@ -211,6 +264,13 @@ class AnchoredOnlineFilter:
     gyro_process_covariance_scale: float | None = None
     accel_process_covariance_scale: float | None = None
     post_relocalization_covariance_scale: float = 1.0
+    allow_anchor_reacquisition_after_first_lock: bool = True
+    dropout_post_reacquisition_covariance_scale: float | None = None
+    dropout_max_reacquisition_position_correction_m: float | None = None
+    dropout_max_reacquisition_rotation_correction_deg: float | None = None
+    dropout_max_reacquisition_velocity_correction_mps: float | None = None
+    anchor_reacquisition_max_innovation_norm: float | None = None
+    anchor_reacquisition_max_nis: float | None = None
     last_anchor_nis: float | None = None
     last_auxiliary_nis: float | None = None
     last_anchor_position_world_m: np.ndarray | None = None
@@ -298,10 +358,13 @@ class AnchoredOnlineFilter:
         rotation_gain: float = 1.0,
         velocity_gain: float = 1.0,
         relocalization_threshold_m: float = 0.15,
-    ) -> None:
+        is_reacquisition: bool = False,
+    ) -> AnchorUpdateResult:
         measured_position_world_m, measured_rotation_wi = _camera_pose_from_detection(tag_detection, tag_pose)
         innovation = measured_position_world_m - self.state.position_world_m
         innovation_norm = float(np.linalg.norm(innovation))
+        rotation_delta_rotvec = _rotation_delta_rotvec(self.state.rotation_wi, measured_rotation_wi)
+        orientation_innovation_norm_deg = float(np.linalg.norm(rotation_delta_rotvec) * 180.0 / np.pi)
         relocalized = innovation_norm > float(relocalization_threshold_m)
         if relocalized:
             self.anchor_relocalizations += 1
@@ -313,17 +376,62 @@ class AnchoredOnlineFilter:
                 measured_velocity_world_mps = (
                     np.asarray(measured_position_world_m, dtype=np.float64) - self.last_anchor_position_world_m
                 ) / dt_s
+        velocity_innovation_world_mps = measured_velocity_world_mps - self.state.velocity_world_mps
+        velocity_innovation_norm_mps = float(np.linalg.norm(velocity_innovation_world_mps))
         position_gain = float(np.clip(position_gain, 0.0, 1.0))
         velocity_gain = float(np.clip(velocity_gain, 0.0, 1.0))
-        self.state.position_world_m = self.state.position_world_m + position_gain * innovation
-        self.state.velocity_world_mps = (
-            (1.0 - velocity_gain) * self.state.velocity_world_mps + velocity_gain * measured_velocity_world_mps
+        measurement_variance = max(measurement_std_m**2 * self._anchor_covariance_scale(), 1e-9)
+        anchor_nis = float(innovation.T @ innovation / measurement_variance)
+        if is_reacquisition:
+            if self.anchor_reacquisition_max_innovation_norm is not None and innovation_norm > float(
+                self.anchor_reacquisition_max_innovation_norm
+            ):
+                return AnchorUpdateResult(
+                    accepted=False,
+                    reason="innovation_gate_fail",
+                    innovation_norm_m=innovation_norm,
+                    orientation_innovation_norm_deg=orientation_innovation_norm_deg,
+                    velocity_innovation_norm_mps=velocity_innovation_norm_mps,
+                    relocalization_correction_norm_m=0.0,
+                    post_update_covariance_trace=float(np.trace(self.covariance)),
+                    is_reacquisition=True,
+                    relocalized=bool(relocalized),
+                    anchor_nis=anchor_nis,
+                )
+            if self.anchor_reacquisition_max_nis is not None and anchor_nis > float(self.anchor_reacquisition_max_nis):
+                return AnchorUpdateResult(
+                    accepted=False,
+                    reason="innovation_gate_fail",
+                    innovation_norm_m=innovation_norm,
+                    orientation_innovation_norm_deg=orientation_innovation_norm_deg,
+                    velocity_innovation_norm_mps=velocity_innovation_norm_mps,
+                    relocalization_correction_norm_m=0.0,
+                    post_update_covariance_trace=float(np.trace(self.covariance)),
+                    is_reacquisition=True,
+                    relocalized=bool(relocalized),
+                    anchor_nis=anchor_nis,
+                )
+        position_correction_world_m, position_clipped = _clip_vector_norm(
+            position_gain * innovation,
+            max_norm=self.dropout_max_reacquisition_position_correction_m if is_reacquisition else None,
         )
-        self.state.rotation_wi = measured_rotation_wi.copy()
+        velocity_correction_world_mps, velocity_clipped = _clip_vector_norm(
+            velocity_gain * velocity_innovation_world_mps,
+            max_norm=self.dropout_max_reacquisition_velocity_correction_mps if is_reacquisition else None,
+        )
+        max_rotation_correction_rad = None
+        if is_reacquisition and self.dropout_max_reacquisition_rotation_correction_deg not in (None, ""):
+            max_rotation_correction_rad = np.deg2rad(float(self.dropout_max_reacquisition_rotation_correction_deg))
+        rotation_correction_rotvec, rotation_clipped = _clip_vector_norm(
+            rotation_gain * rotation_delta_rotvec,
+            max_norm=max_rotation_correction_rad,
+        )
+        self.state.position_world_m = self.state.position_world_m + position_correction_world_m
+        self.state.velocity_world_mps = self.state.velocity_world_mps + velocity_correction_world_mps
+        self.state.rotation_wi = _apply_rotation_correction(self.state.rotation_wi, rotation_correction_rotvec)
         self.last_innovation_norm = innovation_norm
         self.covariance = sanitize_covariance(self.covariance * max(1.0 - 0.4 * position_gain, 1e-6))
-        measurement_variance = max(measurement_std_m**2 * self._anchor_covariance_scale(), 1e-9)
-        self.last_anchor_nis = float(innovation.T @ innovation / measurement_variance)
+        self.last_anchor_nis = anchor_nis
         self.covariance[0:3, 0:3] = np.eye(3, dtype=np.float64) * max(rotation_gain * measurement_variance, 1e-9)
         self.covariance[3:6, 3:6] = np.eye(3, dtype=np.float64) * measurement_variance
         self.covariance[6:9, 6:9] = np.eye(3, dtype=np.float64) * max((2.0 * measurement_std_m) ** 2, 1e-9)
@@ -331,9 +439,26 @@ class AnchoredOnlineFilter:
             self.covariance = sanitize_covariance(
                 self.covariance * max(float(self.post_relocalization_covariance_scale), 1.0)
             )
+        if is_reacquisition and self.dropout_post_reacquisition_covariance_scale not in (None, ""):
+            self.covariance = sanitize_covariance(
+                self.covariance * max(float(self.dropout_post_reacquisition_covariance_scale), 1.0)
+            )
         self.last_timestamp_s = float(tag_detection.timestamp_s)
         self.last_anchor_position_world_m = np.asarray(measured_position_world_m, dtype=np.float64).reshape(3)
         self.last_anchor_timestamp_s = float(tag_detection.timestamp_s)
+        correction_clipped = bool(position_clipped or rotation_clipped or velocity_clipped)
+        return AnchorUpdateResult(
+            accepted=True,
+            reason="correction_clipped" if correction_clipped else "accepted",
+            innovation_norm_m=innovation_norm,
+            orientation_innovation_norm_deg=orientation_innovation_norm_deg,
+            velocity_innovation_norm_mps=velocity_innovation_norm_mps,
+            relocalization_correction_norm_m=float(np.linalg.norm(position_correction_world_m)),
+            post_update_covariance_trace=float(np.trace(self.covariance)),
+            is_reacquisition=bool(is_reacquisition),
+            relocalized=bool(relocalized),
+            anchor_nis=anchor_nis,
+        )
 
     def anchor_visual_update(
         self,
@@ -661,6 +786,19 @@ class AnchoredOnlineFilter:
                 if self.accel_process_covariance_scale is None
                 else float(self.accel_process_covariance_scale),
                 "post_relocalization_covariance_scale": float(self.post_relocalization_covariance_scale),
+                "allow_anchor_reacquisition_after_first_lock": bool(self.allow_anchor_reacquisition_after_first_lock),
+                "dropout_post_reacquisition_covariance_scale": None
+                if self.dropout_post_reacquisition_covariance_scale is None
+                else float(self.dropout_post_reacquisition_covariance_scale),
+                "dropout_max_reacquisition_position_correction_m": None
+                if self.dropout_max_reacquisition_position_correction_m is None
+                else float(self.dropout_max_reacquisition_position_correction_m),
+                "dropout_max_reacquisition_rotation_correction_deg": None
+                if self.dropout_max_reacquisition_rotation_correction_deg is None
+                else float(self.dropout_max_reacquisition_rotation_correction_deg),
+                "dropout_max_reacquisition_velocity_correction_mps": None
+                if self.dropout_max_reacquisition_velocity_correction_mps is None
+                else float(self.dropout_max_reacquisition_velocity_correction_mps),
                 "last_anchor_nis": None if self.last_anchor_nis is None else float(self.last_anchor_nis),
                 "last_auxiliary_nis": None if self.last_auxiliary_nis is None else float(self.last_auxiliary_nis),
             },
@@ -704,6 +842,19 @@ class AnchoredOnlineFilter:
                 if self.accel_process_covariance_scale is None
                 else float(self.accel_process_covariance_scale),
                 "post_relocalization_covariance_scale": float(self.post_relocalization_covariance_scale),
+                "allow_anchor_reacquisition_after_first_lock": bool(self.allow_anchor_reacquisition_after_first_lock),
+                "dropout_post_reacquisition_covariance_scale": None
+                if self.dropout_post_reacquisition_covariance_scale is None
+                else float(self.dropout_post_reacquisition_covariance_scale),
+                "dropout_max_reacquisition_position_correction_m": None
+                if self.dropout_max_reacquisition_position_correction_m is None
+                else float(self.dropout_max_reacquisition_position_correction_m),
+                "dropout_max_reacquisition_rotation_correction_deg": None
+                if self.dropout_max_reacquisition_rotation_correction_deg is None
+                else float(self.dropout_max_reacquisition_rotation_correction_deg),
+                "dropout_max_reacquisition_velocity_correction_mps": None
+                if self.dropout_max_reacquisition_velocity_correction_mps is None
+                else float(self.dropout_max_reacquisition_velocity_correction_mps),
                 "last_anchor_nis": None if self.last_anchor_nis is None else float(self.last_anchor_nis),
                 "last_auxiliary_nis": None if self.last_auxiliary_nis is None else float(self.last_auxiliary_nis),
             },
@@ -713,6 +864,7 @@ class AnchoredOnlineFilter:
 
 __all__ = [
     "AnchoredOnlineFilter",
+    "AnchorUpdateResult",
     "AuxiliaryUpdateDecision",
     "AuxiliaryUpdateSummary",
 ]

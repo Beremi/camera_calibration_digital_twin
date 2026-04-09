@@ -324,3 +324,78 @@ Outcome:
   - the branch is still blocked on a deeper fused intermittent-anchor defect
   - the second-pass draft was not advanced to publication/media closure after
     this point because the science bar is still unmet
+
+### Dropout-debug pack implementation pass
+
+12. system Python
+
+```bash
+python -m py_compile \
+  scripts/run_isaac_anchor_vio.py \
+  scripts/run_isaac_second_pass_dropout_debug.py \
+  src/calib_sim/isaac/runtime/main_loop.py \
+  src/calib_sim/isaac/estimation/online_filter.py \
+  src/calib_sim/isaac/logging/writer.py \
+  src/calib_sim/reporting/isaac_second_pass_dropout_debug.py \
+  tests/test_isaac_second_pass_dropout_debug.py \
+  tests/test_isaac_second_pass_switches.py \
+  tests/_isaac_test_helpers.py
+```
+
+Outcome:
+- passed
+- purpose: quick syntax validation after wiring the dropout-debug runtime,
+  reporting, and tests
+
+13. `.venv`
+
+```bash
+pytest -q tests/test_isaac_second_pass_dropout_debug.py \
+          tests/test_isaac_second_pass_switches.py \
+          tests/test_estimation_factors.py \
+          tests/test_imu_semantics.py \
+          tests/test_isaac_mode_semantics.py \
+          tests/test_isaac_second_pass_tuning.py \
+          tests/test_isaac_second_pass_suite.py \
+          tests/test_isaac_second_pass_media_bundle.py
+```
+
+Outcome:
+- passed
+- result: `26 passed`
+- purpose: keep the fused-path regression slice green while adding the new
+  dropout-debug runner, trace schema, and root-cause classifier
+
+14. `.venv`
+
+```bash
+python scripts/verify_isaac_first_pass_suite.py
+python scripts/build_isaac_first_pass_publication.py
+```
+
+Outcome:
+- passed
+- purpose: confirm the frozen first-pass publication path remains untouched
+- result:
+  - suite verify: `ok = true`
+  - publication build: `artifact_source = latest_first_pass_suite`
+  - placeholders remaining: `false`
+
+15. `.venv`
+
+```bash
+python scripts/run_isaac_second_pass_dropout_debug.py --dry-run
+```
+
+Outcome:
+- passed
+- purpose: verify the six fixed debug runs and their special dropout flags are
+  exposed by the new runner before launching real Isaac jobs
+- result:
+  - planned runs:
+    - `second_pass_dropout_debug_visual_seed_007`
+    - `second_pass_dropout_debug_fused_seed_007`
+    - `second_pass_dropout_debug_fused_no_reacq_seed_007`
+    - `second_pass_dropout_debug_fused_no_imu_during_suppression_seed_007`
+    - `second_pass_dropout_debug_fused_covinfl_seed_007`
+    - `second_pass_dropout_debug_fused_clipcorr_seed_007`

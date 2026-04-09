@@ -2,9 +2,9 @@
 
 ## Current Work Packet
 
-- current commit SHA: `4c565ae`
+- working baseline commit SHA: `334e5a2`
 - preserved pre-draft checkpoint: `b3f23c9`
-- current milestone: `second-pass first-draft artifact closure`
+- current milestone: `fused-dropout stabilization before draft closure`
 
 This branch continues from the frozen first-pass publication milestone tagged
 `isaac-first-pass-freeze`.
@@ -38,6 +38,24 @@ The practical conclusion is simple: the branch is not blocked on tables,
 figures, or media anymore. It is blocked on one remaining fused runtime or
 mechanization defect that still makes the dropout condition scientifically
 indefensible for the first draft.
+
+The next work packet is therefore a dedicated seed-`007` dropout debug pack:
+
+- `scripts/run_isaac_second_pass_dropout_debug.py`
+- per-run raw traces:
+  - `raw/dropout_debug_frames.csv`
+  - `raw/dropout_debug_events.csv`
+- per-run analysis:
+  - `analysis/dropout_debug_summary.json`
+  - the dropout timeline figures
+- pack-level bundle:
+  - `output/isaac_runs/latest_second_pass_dropout_debug/summary.csv`
+  - `output/isaac_runs/latest_second_pass_dropout_debug/summary.json`
+  - `docs/isaac_second_pass_dropout_debug.md`
+
+Do not rerun the 18-run suite, rebuild the second-pass draft PDF, or rerender
+polished media until at least one fused intermittent-anchor debug variant
+clears the interim blocker bar.
 
 ## Preserved Checkpoint
 

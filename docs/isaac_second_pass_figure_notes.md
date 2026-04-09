@@ -1,63 +1,58 @@
 # Isaac Second-Pass Figure And Video Notes
 
-This note records what each second-pass draft asset is supposed to show and what
-the reader should notice first.
-
-Current status note:
-
-- the first full suite-generated figure set is diagnostic, not draft-final
-- after the 2026-04-09 fused-path fixes, the nominal and intermittent-anchor
-  figures should be rerendered once the fused dropout instability is resolved
+This note records what each second-pass draft asset now shows after the
+refreshed rerun suite. The key change from the earlier blocked branch state is
+that intermittent-anchor fused is no longer a catastrophic failure case.
 
 ## Paper Figures
 
 ### `nominal_trajectory_compare.png`
 
 - Shows: representative visual vs fused top-down trajectory on the nominal full-anchor condition.
-- Notice: whether fused stays close to the visual baseline without losing completion or introducing obvious trajectory wobble.
+- Notice: fused now tracks the nominal path competitively on mean position error without reintroducing the first-pass instability.
 - Cite in paper: nominal-results paragraph in the Results section.
 
 ### `dropout_trajectory_compare.png`
 
 - Shows: representative visual vs fused top-down trajectory with deterministic anchor-update suppression.
-- Notice: whether fused degrades more gracefully through the dropout windows than visual-only.
-- Current reality: the first generated version instead shows the branch blocker, namely catastrophic fused estimator drift while realized control still completes.
+- Notice: fused no longer diverges catastrophically through the suppression windows.
+- Current reality: visual still looks cleaner on the current error metrics, so this figure supports a stabilization claim, not a fused-win claim.
 - Cite in paper: intermittent-anchor paragraph in the Results section.
 
 ### `stress_trajectory_compare.png`
 
 - Shows: representative visual vs fused top-down trajectory under the `servo_stress` actuation preset.
-- Notice: whether estimator differences remain visible once the actuation path becomes harder.
+- Notice: both estimators remain stable under the harder actuation path, with fused slightly better on mean position error and visual still better on waypoint error.
 - Cite in paper: actuation-stress paragraph in the Results section.
 
 ### `coverage_nees_compare.png`
 
 - Shows: suite-level coverage and NEES summary.
-- Notice: whether fused calibration is still overconfident or moves closer to nominal after second-pass tuning.
+- Notice: second-pass fused calibration is now numerically sane across the suite, including the intermittent-anchor condition.
 - Cite in paper: uncertainty-discussion paragraph in the Results or Discussion section.
 
 ### `anchor_vs_aux_residuals_nominal.png`
 
 - Shows: residual-quality comparison for the representative nominal visual and fused runs.
-- Notice: whether the second-pass branch truly removed the first-pass residual pathology instead of only masking it with anchor relocalization.
+- Notice: the second-pass branch removed the first-pass residual pathology without needing to claim a broad fused-control win.
 - Cite in paper: nominal residual-quality paragraph near the nominal table.
 
 ### `anchor_vs_aux_residuals_dropout.png`
 
 - Shows: residual-quality comparison for the representative intermittent-anchor runs.
-- Notice: whether anchor suppression hurts visual-only and fused in the same way or reveals a clearer fusion advantage.
+- Notice: reduced anchor availability no longer produces the old fused branch blocker, even though visual remains stronger on the current control-facing metrics.
 - Cite in paper: intermittent-anchor analysis paragraph.
 
 ### `smoother_feedback_compare.png`
 
 - Shows: smoother-correction timelines for the representative nominal visual and fused runs.
-- Notice: whether the chosen backend refines the state cleanly or still produces large corrective jumps.
+- Notice: the chosen backend and lock no longer produce the large corrective jumps that previously made the fused path hard to trust.
 - Cite in paper: tuning or estimator-backend discussion paragraph.
 
 ### `tuning_heatmap_fused.png`
 
-- Shows: compact fused-tuning summary across the explored covariance/backend settings.
-- Notice: that the nominal fused configuration was selected from generated evidence rather than a hand-picked parameter set.
+- Shows: compact fused-tuning summary across the explored covariance settings.
+- Notice: the promoted fused nominal lock was selected from generated evidence and a focused retune rather than a hand-picked parameter set.
 - Cite in paper: second-pass tuning protocol section.
 
 ## Dashboard And Presentation Videos
@@ -65,36 +60,36 @@ Current status note:
 ### `hero_demo.mp4`
 
 - Shows: the nominal fused run with an overview-style diagnostic overlay.
-- Notice: the end-to-end system behavior and the fact that the branch now has a readable demo artifact, not just tables.
+- Notice: the branch now has a stable, readable end-to-end fused demo rather than only recovery/debug artifacts.
 - Cite in dashboard: opening hero section.
 
 ### `visual_vs_fused_nominal.mp4`
 
 - Shows: split-screen nominal comparison of visual and fused closed-loop behavior.
-- Notice: whether fusion is at least competitive on the clean baseline.
+- Notice: fused is competitive on mean position error, while visual still holds the cleaner waypoint-tracking baseline.
 - Cite in dashboard: nominal finding box.
 
 ### `visual_vs_fused_dropout.mp4`
 
 - Shows: split-screen intermittent-anchor comparison.
-- Notice: how the two estimators behave while anchor updates are suppressed on schedule.
-- Current reality: until the fused dropout bug is fixed, this video is more useful as an internal debugging asset than as a paper-claim asset.
+- Notice: fused remains stable and interpretable while anchor updates are suppressed on schedule.
+- Current reality: this is now a paper-claim asset, but it supports a repaired-baseline story rather than a stronger fused advantage claim.
 - Cite in dashboard: intermittent-anchor finding box.
 
 ### `actuation_stress_demo.mp4`
 
 - Shows: fused nominal versus fused `servo_stress` behavior.
-- Notice: how harder actuation changes the positioning task and how much uncertainty grows.
+- Notice: the stress preset changes the positioning task without causing estimator collapse, and the second-pass result is best framed as robustness plus calibration rather than a fused waypoint win.
 - Cite in dashboard: servo-stress finding box.
 
 ### `observer_phone_diagnostics.mp4`
 
 - Shows: observer-view imagery paired with the diagnostic context used to interpret the nominal fused run.
-- Notice: the link between motion, residual quality, and smoother feedback.
+- Notice: the link between motion, residual quality, and smoother feedback on the repaired fused path.
 - Cite in dashboard: diagnostics section.
 
 ### `paper_teaser_second_pass.mp4`
 
-- Shows: stitched overview of the nominal, dropout, and servo-stress second-pass story.
-- Notice: the high-level scientific takeaway in under one minute.
+- Shows: stitched overview of the nominal, intermittent-anchor, and servo-stress second-pass story.
+- Notice: the high-level takeaway is stabilization: nominal fused is competitive on mean position error, intermittent-anchor fused is no longer catastrophic, and visual remains the stronger waypoint baseline.
 - Cite in dashboard: top-level presentation or lab-review link.

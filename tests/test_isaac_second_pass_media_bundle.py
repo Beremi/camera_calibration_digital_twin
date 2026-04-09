@@ -45,6 +45,10 @@ def test_second_pass_media_bundle_and_dashboard_build(tmp_path: Path) -> None:
     assert Path(media_payload["stills"]["dropout_still"]).exists()
     assert Path(media_payload["stills"]["servo_stress_still"]).exists()
 
+    updated_lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    assert updated_lock["draft_selection"]["presentation_manifest_path"] is not None
+    assert updated_lock["draft_selection"]["media_artifacts_stale"] is False
+
     dashboard_result = subprocess.run(
         [
             sys.executable,

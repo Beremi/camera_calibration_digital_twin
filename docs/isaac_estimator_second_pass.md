@@ -2,11 +2,11 @@
 
 ## Current Work Packet
 
-- current packet head: `a1b0d4f`
-- previous packet head: `3a4a582`
+- current packet head: `6ef8807`
+- previous packet head: `a1b0d4f`
 - working baseline commit SHA: `334e5a2`
 - preserved pre-draft checkpoint: `b3f23c9`
-- current milestone: `suite rerun complete; publication refresh pending`
+- current milestone: `first usable second-pass draft package ready for review`
 - control dropout bundle: `output/isaac_runs/latest_second_pass_dropout_debug`
 
 This branch continues from the frozen first-pass publication milestone tagged
@@ -20,11 +20,11 @@ diagnosis and repair only.
 
 The estimator-side blocker for the first usable second-pass draft is now
 cleared. The fused intermittent-anchor condition is no longer catastrophic
-under the promoted suppression strategy, and the full 18-run suite has been
-rerun from the refreshed draft lock. Publication closure is now the remaining
-work: regenerate the second-pass PDF, figures, and media bundle from the new
-suite artifacts and tighten the written claims around what the rerun actually
-shows.
+under the promoted suppression strategy, the full 18-run suite has been rerun
+from the refreshed draft lock, and the second-pass PDF plus local presentation
+bundle have now been regenerated from those refreshed artifacts. The next work
+on this branch is manuscript polish and claim discipline, not another forced
+estimator-repair packet.
 
 What is true right now:
 
@@ -80,13 +80,21 @@ What is true right now:
   suite
 - nominal fused stayed healthy and is within the requested 10% position-error
   window relative to visual at the suite level
+- the second-pass draft package now builds locally from the rerun suite:
+  - PDF:
+    `report_tex/second_pass_publication_draft.pdf`
+  - publication summary:
+    `output/isaac_runs/latest_second_pass_suite/analysis/publication_build_summary.json`
+  - presentation bundle:
+    `output/isaac_runs/latest_second_pass_suite/presentation/`
 - future runs now persist the actual overridden estimator/control configuration
   into the saved run manifest rather than the raw YAML defaults
 
 The practical conclusion is now straightforward: the branch has a credible
-post-fix 18-run science suite and a real fused draft lock. The next packet is
-publication closure, not more estimator plumbing unless the refreshed paper
-review surfaces a new inconsistency.
+post-fix 18-run science suite, a real fused draft lock, a compiled draft PDF,
+and a local media/dashboard bundle that all point to the same narrower
+stabilization story. Visual remains the stronger waypoint-tracking baseline,
+but the second-pass branch is now publication-usable rather than blocked.
 
 ## Preserved Checkpoint
 
@@ -254,31 +262,25 @@ draft, not a broad benchmark campaign. The intended draft bundle is:
 
 ## Current Draft-Lock Note
 
-The current provisional draft lock now points to the best real fused nominal
-candidate seen so far:
+The current real draft lock now points to the promoted fused nominal
+configuration selected after the suppression-propagation repair and focused
+retune:
 
 - backend: `lightweight`
 - reference run:
-  `second_pass_tuning_anchor_only_lightweight_seed_007_imu_8p0_vision_4p0_post_1p0_gyro_default_accel_default`
+  `second_pass_tuning_anchor_only_lightweight_seed_007_imu_8p0_vision_2p0_post_2p0_gyro_default_accel_default_supp_gyro_only_gate_10p0_covinfl_8p0`
 - runtime switches:
   - `use_aux_tags_in_filter = false`
   - `use_aux_tags_in_smoother = false`
   - `use_aux_map_for_control = false`
+- filter overrides:
+  - `suppression_propagation_mode = gyro_only`
+  - `suppression_imu_specific_force_gate_mps2 = 10.0`
+  - `dropout_post_reacquisition_covariance_scale = 8.0`
 
-That choice is provisional rather than celebratory. It is the strongest real
-seed-`007` fused nominal configuration collected so far, but the nominal
-three-seed comparison still shows fused trailing visual on both mean position
-error and mean waypoint error even while fused remains well calibrated
-(`coverage ~= 99.6%`, `pose NEES ~= 4.2`). The remaining closure question is
-therefore not whether the branch is stable enough to benchmark, but whether the
-final nominal backend/weighting choice can narrow that gap enough for the first
-draft claim to be strong on the clean condition.
-
-That note now needs one explicit caveat: the current lock and suite membership
-should be treated as diagnostic rather than draft-final. The lock still points
-to the best nominal fused candidate collected so far, and the latest nominal
-follow-up run stayed healthy after the suppression-window propagation fixes.
-But the dropout condition remains unresolved even after those fixes. The next
-closure move is therefore a rerun of the draft suite only after the fused
-intermittent-anchor path is numerically sane under the production fused method,
-not merely under the diagnostic `no_imu_during_suppression` probe.
+That lock is no longer just a diagnostic candidate. It has already been used to
+rerun the full 18-run suite, and the refreshed suite artifacts are the current
+source of truth for this branch. The remaining work is therefore not another
+dropout repair packet. It is publication closure: regenerate the second-pass
+PDF, figures, and media bundle from the rerun suite, then tighten the written
+claims to the narrower stabilization result the data actually support.

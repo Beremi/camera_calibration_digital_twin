@@ -1,61 +1,51 @@
 # Isaac Second-Pass Key Findings
 
-This note now reflects the current state after the first full 18-run suite
-attempt and the follow-up fused-path reruns on 2026-04-09.
+This note reflects the refreshed 18-run second-pass suite executed from the
+promoted fused draft lock at commit `a1b0d4f`.
 
 ## Nominal Condition
 
-The nominal three-seed batch is stable and fully complete for both estimators,
-but it still does not support the strongest second-pass claim on the clean
-condition. Under the provisional anchor-only lock, visual averages
-`0.01392 m` mean position error and `0.01964 m` mean waypoint error, while
-fused averages `0.01623 m` and `0.02244 m`. A later post-fix seed-007 fused
-nominal rerun improved to `0.01556 m` mean position error and `0.02211 m`
-waypoint error, so the nominal fused path is getting better, but it is still
-not yet within the intended `5%` competitiveness bar against visual.
+The nominal condition now supports a credible second-pass stabilization claim.
+Visual averages `0.01388 m` mean position error and `0.01979 m` mean waypoint
+error, while fused averages `0.01303 m` and `0.02293 m`. That means fused is
+competitive on mean position error and remains well calibrated, but visual
+still leads on waypoint error. The clean nominal story is therefore no longer
+that fused is obviously weaker; it is that fused has become defensible and
+reproducible without yet becoming the better control baseline on every metric.
 
 ## Intermittent-Anchor Condition
 
-The first full suite attempt produced the clearest remaining blocker on the
-branch. Visual under intermittent anchor stayed numerically sane with
-`0.01648 m` mean position error, `92.71%` empirical coverage, and `6.30` pose
-NEES. Fused under the same condition collapsed catastrophically at about
-`251.69 m` mean position error, `14.72%` empirical coverage, and
-`1.46e7` pose NEES. Follow-up fused reruns with auxiliary tags enabled and with
-two runtime fixes still remained catastrophic at roughly `248–253 m` mean
-position error. The current conclusion is therefore that intermittent-anchor
-fused stability is the unresolved blocker for the first draft.
+The branch blocker was cleared here. In the old blocked suite, fused
+intermittent-anchor diverged catastrophically. In the refreshed suite, visual
+averages `0.01983 m` mean position error, `90.49%` coverage, and `10.56` pose
+NEES, while fused averages `0.03072 m`, `88.82%`, and `14.02`. Fused does not
+beat visual on the current error metrics, but it is no longer scientifically
+indefensible: it completes all runs and stays numerically interpretable through
+the scheduled suppression windows.
 
 ## Servo-Stress Condition
 
-The first full suite attempt did complete the servo-stress condition. Visual
-averaged `0.01381 m` mean position error and `0.02377 m` mean waypoint error,
-while fused averaged `0.01593 m` and `0.02734 m`. That means the current fused
-configuration does not yet show a clear control advantage under the present
-servo-stress preset, even though both estimators still complete the path.
+The servo-stress condition now reads as a stability and calibration check
+rather than a fused win. Visual averages `0.01390 m` mean position error and
+`0.02366 m` mean waypoint error, while fused averages `0.01328 m` and
+`0.02646 m`. Fused is slightly better on mean position error and remains well
+calibrated, but visual again keeps the stronger waypoint-tracking baseline.
 
 ## Uncertainty Calibration
 
-The clean nominal condition is no longer grossly overconfident. Fused nominal
-coverage stays around `99.58%` with pose NEES around `4.19`, compared with
-visual at `99.79%` and `5.01`, and the post-fix seed-007 fused rerun remained
-well calibrated at `4.13` NEES. The calibration story changes completely under
-intermittent anchor, where fused still collapses to about `14.7%` empirical
-coverage and `1.4e7` pose NEES. The branch therefore no longer has a general
-uncertainty-calibration problem; it has a fused dropout-specific failure mode.
+The second-pass branch now has a credible calibration story. Nominal fused
+coverage is `99.72%` with pose NEES `4.25`, and servo-stress fused remains at
+`99.79%` coverage with pose NEES `4.26`. Under intermittent anchor, fused no
+longer collapses to absurd values; it holds `88.82%` coverage and `14.02` pose
+NEES. That is weaker than visual under the same condition, but it is no longer
+the catastrophic overconfidence failure that blocked the draft.
 
-## Remaining Failure Modes
+## Remaining Weaknesses
 
-The remaining weakness is now narrower but more serious. The lightweight fused
-nominal configuration is stable, completes the path, and keeps uncertainty
-sane, but it still loses to visual on the easy condition and still fails
-catastrophically under intermittent anchor even after:
-
-- switching the inertial position update to standard constant-acceleration
-  kinematics
-- sampling synthetic IMU motion from the camera pose instead of the
-  end-effector pose
-
-That means the next branch action should not be more publication polishing. It
-should be a focused fix to the fused intermittent-anchor runtime path before the
-18-run suite is treated as draft-final.
+The remaining weakness is practical rather than existential. The branch now has
+a repaired fused runtime policy, a tuned fused nominal lock, and a rerun suite
+that is fit for publication closure. What it does not yet show is a broad fused
+advantage. Visual still leads on waypoint error and remains stronger on the
+current intermittent-anchor error metrics. The honest second-pass paper claim
+is therefore a stabilization result: fusion is now defensible and reproducible
+in the anchored benchmark, not universally better.

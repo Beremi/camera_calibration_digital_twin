@@ -48,3 +48,7 @@ def test_second_pass_publication_build_uses_suite_artifacts(tmp_path: Path) -> N
     assert payload["artifact_source"] == "latest_second_pass_suite"
     assert payload["placeholders_remaining"] is False
     assert Path(payload["pdf_path"]).exists()
+
+    updated_lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    assert updated_lock["draft_selection"]["publication_build_summary_path"] == payload["publication_build_summary"]
+    assert updated_lock["draft_selection"]["publication_pdf_path"] == payload["pdf_path"]

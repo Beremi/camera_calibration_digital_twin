@@ -123,10 +123,13 @@ def _write_video(path: Path, frames: list[np.ndarray], *, fps: int) -> None:
     if not frames:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
+    target_size = (frames[0].shape[1], frames[0].shape[0])
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(str(path), fourcc, float(fps), (frames[0].shape[1], frames[0].shape[0]))
+    writer = cv2.VideoWriter(str(path), fourcc, float(fps), target_size)
     try:
         for frame in frames:
+            if (frame.shape[1], frame.shape[0]) != target_size:
+                frame = cv2.resize(frame, target_size, interpolation=cv2.INTER_LINEAR)
             writer.write(frame)
     finally:
         writer.release()
@@ -314,9 +317,9 @@ def render_media_bundle(output_root: Path, *, lock_path: Path, fps: int, max_fra
                 (720, 1280),
                 title="Anchored Visual vs Visual-Inertial Closed-Loop Tracking",
                 bullets=[
-                    "Nominal full-anchor condition",
-                    "Deterministic intermittent-anchor dropout",
-                    "Servo stress under uncertain actuation",
+                    "Nominal fused is competitive on mean position error",
+                    "Intermittent-anchor fused is stable, no longer catastrophic",
+                    "Visual still leads on waypoint error in the current suite",
                 ],
             )
         ]
@@ -341,9 +344,9 @@ def render_media_bundle(output_root: Path, *, lock_path: Path, fps: int, max_fra
                 (720, 1280),
                 title="Current Takeaway",
                 bullets=[
-                    "Fusion is tuned to be competitive on the clean nominal case",
-                    "Intermittent visibility is the main regime to watch",
-                    "Remaining weakness: residual and calibration quality under harder conditions",
+                    "The second-pass branch repaired the fused dropout failure",
+                    "Fused is now reproducible and defensible in the anchored benchmark",
+                    "Remaining weakness: visual is still the stronger waypoint baseline",
                 ],
             )
         ]
@@ -372,11 +375,11 @@ def render_media_bundle(output_root: Path, *, lock_path: Path, fps: int, max_fra
         },
         "captions": {
             "hero_demo": "Overview of the anchored fused closed-loop nominal run with path and diagnostics overlays.",
-            "visual_vs_fused_nominal": "Nominal full-anchor split-screen comparison of visual and fused closed-loop tracking.",
-            "visual_vs_fused_dropout": "Intermittent-anchor split-screen comparison highlighting deterministic anchor-update suppression.",
-            "actuation_stress_demo": "Comparison of nominal fused behavior and the servo_stress actuation preset.",
+            "visual_vs_fused_nominal": "Nominal full-anchor split-screen showing that fused is competitive on mean position error while visual still leads on waypoint error.",
+            "visual_vs_fused_dropout": "Intermittent-anchor split-screen showing that the promoted fused path no longer diverges catastrophically through scheduled anchor suppression.",
+            "actuation_stress_demo": "Comparison of nominal fused behavior and the servo_stress actuation preset, emphasizing stability and calibration rather than a fused win on waypoint error.",
             "observer_phone_diagnostics": "Observer view, phone-view proxy, and smoother/residual diagnostics for the representative fused nominal run.",
-            "paper_teaser_second_pass": "Short stitched overview for talks or lab review.",
+            "paper_teaser_second_pass": "Short stitched overview aligned with the refreshed rerun-suite claims.",
         },
     }
     manifest_path = presentation_dir / "presentation_manifest.json"
@@ -395,6 +398,21 @@ def render_media_bundle(output_root: Path, *, lock_path: Path, fps: int, max_fra
         ]
         draft_selection["media_source_run_ids"] = representative_run_ids
         draft_selection["presentation_manifest_path"] = str(manifest_path.resolve())
+        draft_selection["media_artifacts_stale"] = False
+        build_summary_path = draft_selection.get("publication_build_summary_path")
+        if build_summary_path:
+            build_summary_file = Path(str(build_summary_path))
+            if build_summary_file.exists():
+                build_summary = _load_json(build_summary_file)
+                if build_summary.get("pdf_exists") and not build_summary.get("placeholders_remaining"):
+                    draft_selection["draft_ready"] = True
+                    draft_selection["draft_suite_status"] = "publication_complete"
+                    draft_selection[
+                        "draft_suite_status_reason"
+                    ] = (
+                        "The refreshed second-pass suite, PDF build, and local presentation bundle "
+                        "have all been regenerated from the promoted fused draft lock."
+                    )
         _write_json(lock_path, lock_payload)
     return manifest
 

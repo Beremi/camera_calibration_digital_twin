@@ -37,6 +37,8 @@ def test_second_pass_suite_artifacts_write_tables_macros_and_figures(tmp_path: P
     assert r"\IsaacSecondPassActuationStressRows" in paper_artifacts
     assert r"\IsaacSecondPassUncertaintyRows" in paper_artifacts
     assert r"\IsaacSecondPassMapQualityRows" in paper_artifacts
+    assert r"\ArtifactPending{}" not in paper_artifacts
+    assert "8881.9" not in paper_artifacts
 
     for figure_name in (
         "nominal_trajectory_compare.png",

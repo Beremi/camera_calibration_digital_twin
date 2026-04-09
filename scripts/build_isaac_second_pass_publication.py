@@ -71,6 +71,21 @@ def build_second_pass_publication(
     summary_path = suite_dir / "analysis" / "publication_build_summary.json"
     summary_path.write_text(json.dumps(build_summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     build_summary["publication_build_summary"] = str(summary_path.resolve())
+    if lock_path.exists():
+        lock_payload = json.loads(lock_path.read_text(encoding="utf-8"))
+        draft_selection = lock_payload.setdefault("draft_selection", {})
+        draft_selection["publication_build_summary_path"] = str(summary_path.resolve())
+        draft_selection["publication_pdf_path"] = str(pdf_path)
+        if build_summary["pdf_exists"] and not build_summary["placeholders_remaining"]:
+            draft_selection["draft_suite_status"] = "publication_build_complete_pending_media_refresh"
+            draft_selection[
+                "draft_suite_status_reason"
+            ] = (
+                "The second-pass PDF now builds cleanly from the refreshed suite artifacts, "
+                "but the local media bundle and dashboard still need to be regenerated from the "
+                "same suite before the draft lock can be marked ready."
+            )
+        lock_path.write_text(json.dumps(lock_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return build_summary
 
 

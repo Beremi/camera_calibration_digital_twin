@@ -96,9 +96,15 @@ def _mean_std(values: list[float | None]) -> tuple[float | None, float | None]:
     return float(np.mean(array)), float(np.std(array))
 
 
-def _tex_value(value: Any, *, digits: int = 3, percent: bool = False) -> str:
+def _tex_value(
+    value: Any,
+    *,
+    digits: int = 3,
+    percent: bool = False,
+    missing_value: str = r"\ArtifactPending{}",
+) -> str:
     if value in ("", None):
-        return r"\ArtifactPending{}"
+        return missing_value
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
@@ -113,9 +119,15 @@ def _tex_value(value: Any, *, digits: int = 3, percent: bool = False) -> str:
     return str(value)
 
 
-def _format_mean_std(mean: float | None, std: float | None, *, percent: bool = False) -> str:
+def _format_mean_std(
+    mean: float | None,
+    std: float | None,
+    *,
+    percent: bool = False,
+    missing_value: str = r"\ArtifactPending{}",
+) -> str:
     if mean is None or std is None:
-        return r"\ArtifactPending{}"
+        return missing_value
     if percent:
         return rf"{mean * 100.0:.1f} $\pm$ {std * 100.0:.1f}"
     return rf"{mean:.3f} $\pm$ {std:.3f}"
@@ -587,7 +599,7 @@ def generate_second_pass_suite_artifacts(
         for row in stress_rows
     ]
     uncertainty_tex_rows = [
-        rf"{row['condition_label']} / {row['estimator_mode']} & {_tex_value(row['mean_position_radius_95_m'])} & {_tex_value(row['empirical_95_coverage_percent'], percent=True)} & {_tex_value(row['pose_nees'])} & {_tex_value(row['sigma_error_correlation'])} & {_tex_value(row['anchor_nis'])} & {_tex_value(row['aux_nis'])} \\"
+        rf"{row['condition_label']} / {row['estimator_mode']} & {_tex_value(row['mean_position_radius_95_m'])} & {_tex_value(row['empirical_95_coverage_percent'])} & {_tex_value(row['pose_nees'])} & {_tex_value(row['sigma_error_correlation'])} & {_tex_value(row['anchor_nis'])} & {_tex_value(row['aux_nis'], missing_value='--')} \\"
         for row in uncertainty_rows
     ]
     map_quality_tex_rows = [

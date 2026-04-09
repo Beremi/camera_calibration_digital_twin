@@ -52,14 +52,14 @@ Nominal / full anchor / fused & \ArtifactPending{} & \ArtifactPending{} & \Artif
 \maketitle
 
 \begin{abstract}
-This draft reports the second-pass Isaac experiments built on top of the frozen first-pass baseline. The goal of this branch is intentionally narrow: retune and refine the anchored visual--inertial estimator until fused closed-loop performance becomes competitive with visual-only on the clean nominal condition, then test one intermittent-anchor condition and one stronger actuation-stress condition to identify the regime where fusion begins to help. All headline tables and figures in this document are populated from generated artifacts under \texttt{output/isaac\_runs/latest\_second\_pass\_suite/analysis/}.
+This draft reports the second-pass Isaac experiments built on top of the frozen first-pass baseline. The goal of this branch is intentionally narrow: repair and retune the anchored visual--inertial estimator until fused closed-loop behavior becomes scientifically defensible and competitive with visual-only on the clean nominal condition, then verify that the repaired fused path remains stable under intermittent anchor availability and a modest actuation-stress preset. All headline tables and figures in this document are populated from generated artifacts under \texttt{output/isaac\_runs/latest\_second\_pass\_suite/analysis/}. The resulting claim is a stabilization result rather than a broad fused-performance victory: the second-pass branch removes the catastrophic intermittent-anchor fused failure that blocked the draft, while visual-only remains the stronger waypoint-tracking baseline in this narrow benchmark.
 \end{abstract}
 
 \section{Draft Scope}
 The frozen first-pass publication bundle remains unchanged under \texttt{latest\_first\_pass\_suite}. This draft reads only the second-pass suite under \texttt{latest\_second\_pass\_suite}. The scientific question is focused on estimator quality, not on new scenes, new robots, or replay re-solving.
 
 \section{Problem Statement}
-This draft studies anchored closed-loop path tracking in a known anchor frame under uncertain servo actuation. The comparison is intentionally narrow: a visual-only estimator and a visual--inertial estimator are evaluated on the same robot, scene, path, and controller, with the second-pass branch devoted to answering when fusion becomes competitive and under which realistic perturbations it starts to help.
+This draft studies anchored closed-loop path tracking in a known anchor frame under uncertain servo actuation. The comparison is intentionally narrow: a visual-only estimator and a visual--inertial estimator are evaluated on the same robot, scene, path, and controller. The second-pass branch is devoted to a more modest question than the original first-pass aspirations: after repairing the estimator-quality defects uncovered in the frozen baseline, can the fused estimator be made competitive on the clean nominal task and remain stable and interpretable when anchor availability is degraded?
 
 \section{Estimator Diagnosis Workflow}
 The starting point for this draft is the frozen first-pass publication baseline. That baseline established a complete Isaac workflow, but it also showed that fused uncertainty and residual quality were not yet convincing. The second-pass branch therefore begins with a six-run isolation bundle that separates anchor-only from anchor-plus-auxiliary behavior and keeps the first-pass publication artifacts untouched.
@@ -88,7 +88,7 @@ Condition / estimator & Samples & Duration [s] & Frames & IMU & Commands \\
 \end{table}
 
 \section{Results}
-The results section is organized to answer two questions. First, does the tuned fused configuration become competitive with visual-only on the clean nominal case? Second, if the nominal case remains close, which harder condition produces a clearer separation between the estimators?
+The results section is organized around the refreshed second-pass claim. First, does the tuned fused configuration become competitive with visual-only on the clean nominal case while remaining well calibrated? Second, does the repaired fused path stay stable once anchor updates are intermittently suppressed or actuation uncertainty increases, even if visual-only remains the stronger control baseline on the current waypoint metric?
 
 \begin{table}[H]
 \centering
@@ -102,7 +102,7 @@ Estimator & Pos. err [m] & Waypoint err [m] & Completion [\%] & Anchor RMSE [px]
 \end{tabular}
 \end{table}
 
-The nominal table should be read as the cleanest estimate-quality comparison in the draft. If fusion is still visibly worse here, the branch is not ready to claim a second-pass improvement. If fusion is competitive, then the harder conditions become the place to ask whether the IMU information actually changes the control outcome.
+The nominal table should be read as the cleanest estimate-quality comparison in the draft. In the refreshed suite, fused is competitive on mean position error and remains well calibrated, but visual still leads on waypoint error. That is enough for a first usable stabilization draft: the fused path is no longer the obviously weaker baseline on the clean case, but the data do not support claiming nominal fused superiority across the board.
 
 \begin{table}[H]
 \centering
@@ -116,7 +116,7 @@ Estimator & Pos. err [m] & Waypoint err [m] & Completion [\%] & Effective anchor
 \end{tabular}
 \end{table}
 
-The intermittent-anchor condition is the first place where a real fused advantage is expected to emerge. Because raw detections remain logged and only anchor updates are suppressed on schedule, the condition isolates the estimation consequence of reduced anchor availability rather than conflating it with a scene change.
+The intermittent-anchor condition is the branch's main repaired failure case, not the first place to assume a fused win. Because raw detections remain logged and only anchor updates are suppressed on schedule, the condition isolates the estimation consequence of reduced anchor availability rather than conflating it with a scene change. In the refreshed suite, fused no longer diverges catastrophically and completes all runs, but it does not outperform visual-only on the current error metrics.
 
 \begin{table}[H]
 \centering
@@ -130,7 +130,7 @@ Estimator & Pos. err [m] & Waypoint err [m] & Completion [\%] & Actuator track e
 \end{tabular}
 \end{table}
 
-The servo-stress table asks a different question: how much estimator quality matters once the actuation path becomes less faithful. It should be interpreted together with the uncertainty and map-quality summaries, not as a standalone control benchmark.
+The servo-stress table asks a different question: how much estimator quality matters once the actuation path becomes less faithful. In the refreshed suite, this condition acts mainly as a stability and calibration check. Fused stays well behaved and slightly improves mean position error, but visual remains the better waypoint-tracking controller.
 
 \begin{table}[H]
 \centering
@@ -144,7 +144,7 @@ Condition / estimator & Radius [m] & Coverage [\%] & NEES & Sigma/error corr. & 
 \end{tabular}
 \end{table}
 
-The uncertainty table is included because second-pass closure is not only about lowering trajectory error. The first-pass baseline was grossly overconfident, so coverage, NEES, and NIS are required here to show whether the tuned fused estimator is merely accurate on one path or also better calibrated.
+The uncertainty table is included because second-pass closure is not only about lowering trajectory error. The first-pass baseline was grossly overconfident, so coverage, NEES, and NIS are required here to show whether the tuned fused estimator is merely accurate on one path or also better calibrated. The refreshed suite supports a narrower but stronger claim than the original draft goal: the fused covariance is now numerically sane across the suite, and the intermittent-anchor fused row is no longer scientifically indefensible.
 
 \begin{table}[H]
 \centering
@@ -158,30 +158,30 @@ Condition / estimator & Mean aux err [m] & P95 aux err [m] & Raw anchor [\%] & E
 \end{tabular}
 \end{table}
 
-The map-quality table provides the remaining reality check on auxiliary-tag refinement. The second-pass branch is successful only if anchored control stays usable while the auxiliary map also remains numerically sane and interpretable across the three draft conditions.
+The map-quality table provides the remaining reality check on auxiliary-tag refinement and effective anchor visibility. In this packet the fused policy is deliberately anchor-only, so the table mainly confirms that the scheduled visibility conditions and suppression fractions match the intended benchmark definition.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.92\linewidth]{../output/isaac_runs/latest_second_pass_suite/analysis/nominal_trajectory_compare.png}
-\caption{Nominal trajectory comparison for the representative visual and fused runs. This figure should be read as the clean baseline: the fused path needs to match the visual path closely before harder conditions can support a stronger fusion claim.}
+\caption{Nominal trajectory comparison for the representative visual and fused runs. This is the clean baseline for the paper: the refreshed fused lock now tracks the nominal path competitively on mean position error without showing the first-pass instability that previously undermined the branch.}
 \end{figure}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.92\linewidth]{../output/isaac_runs/latest_second_pass_suite/analysis/dropout_trajectory_compare.png}
-\caption{Intermittent-anchor trajectory comparison with deterministic anchor-update suppression windows. The important visual cue is whether the fused path degrades more gracefully than visual-only when anchor updates are temporarily removed.}
+\caption{Intermittent-anchor trajectory comparison with deterministic anchor-update suppression windows. The important visual cue is no longer a hoped-for fused advantage; it is that the promoted fused path remains controllable and interpretable through scheduled anchor suppression instead of diverging catastrophically as it did in the blocked pre-fix suite.}
 \end{figure}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.92\linewidth]{../output/isaac_runs/latest_second_pass_suite/analysis/stress_trajectory_compare.png}
-\caption{Servo-stress trajectory comparison for the representative visual and fused runs. This figure complements the actuation-stress table by showing whether estimator differences stay visible once the motion path is distorted by stronger servo corruption.}
+\caption{Servo-stress trajectory comparison for the representative visual and fused runs. This figure complements the actuation-stress table by showing that both estimators remain stable when the motion path is distorted by stronger servo corruption, even though visual still keeps the cleaner waypoint-tracking behavior.}
 \end{figure}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.92\linewidth]{../output/isaac_runs/latest_second_pass_suite/analysis/coverage_nees_compare.png}
-\caption{Coverage and NEES summary for the second-pass draft suite. The key question here is not only which estimator is lower-error, but whether the fused covariance stops being obviously overconfident once the second-pass tuning is applied.}
+\caption{Coverage and NEES summary for the second-pass draft suite. The key question here is not only which estimator is lower-error, but whether the second-pass fused covariance remains sane after the intermittent-anchor repair. The refreshed suite supports that narrower calibration claim.}
 \end{figure}
 
 \begin{figure}[H]
@@ -193,7 +193,7 @@ The map-quality table provides the remaining reality check on auxiliary-tag refi
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.92\linewidth]{../output/isaac_runs/latest_second_pass_suite/analysis/anchor_vs_aux_residuals_dropout.png}
-\caption{Residual-quality comparison on the intermittent-anchor condition. Read this figure together with the dropout trajectory plot to see whether reduced anchor availability disproportionately hurts the visual-only or the fused estimator.}
+\caption{Residual-quality comparison on the intermittent-anchor condition. Read this figure together with the dropout trajectory plot to see that reduced anchor availability no longer triggers a fused failure mode that invalidates the benchmark, even though visual remains stronger on the current control-facing metrics.}
 \end{figure}
 
 \begin{figure}[H]
@@ -209,13 +209,15 @@ The map-quality table provides the remaining reality check on auxiliary-tag refi
 \end{figure}
 
 \section{Discussion}
-The intended claim of this draft remains deliberately modest. The first-pass suite established a complete Isaac benchmark but left fused residual quality, map quality, and covariance calibration unconvincing. The second-pass branch narrows the problem to estimator quality, tunes the fused nominal configuration against that diagnosis, and then asks whether the improved fused estimator becomes merely competitive on the easy case or actually advantageous once visibility or actuation realism is degraded.
+The intended claim of this draft is deliberately modest. The first-pass suite established a complete Isaac benchmark but left fused residual quality, map quality, and covariance calibration unconvincing, and it exposed a catastrophic fused intermittent-anchor failure that made the benchmark hard to trust. The second-pass branch narrows the problem to estimator quality, repairs that failure, and tunes a single fused nominal configuration against the repaired runtime path.
 
-The discussion should be read with that scope in mind. This draft does not claim broad scene generalization, real-phone transfer, replay re-solving, or a final benchmark campaign. It is a focused second-pass closure attempt: one tuned fused nominal configuration, one compact three-condition suite, one artifact-driven paper build, and one local presentation bundle that makes the story inspectable by other people.
+The refreshed 18-run suite supports a stabilization result. On the clean nominal condition, fused is competitive on mean position error and remains well calibrated, although visual still leads on waypoint error. On the intermittent-anchor condition, fused no longer diverges catastrophically and completes all runs, but it does not outperform visual-only on the current error or calibration metrics. On the servo-stress condition, fused remains stable and calibrated, yet visual again retains the cleaner waypoint-tracking behavior. The contribution is therefore not that fusion wins everywhere in this benchmark; it is that second-pass fusion becomes reproducible, interpretable, and defensible enough for the benchmark itself to support an honest first draft.
+
+The discussion should be read with that scope in mind. This draft does not claim broad scene generalization, real-phone transfer, replay re-solving, or a final benchmark campaign. It is a focused second-pass closure attempt: one repaired fused runtime policy, one tuned fused nominal configuration, one compact three-condition suite, one artifact-driven paper build, and one local presentation bundle that makes the story inspectable by other people.
 
 \section{Limitations}
 Several limitations remain explicit. The suite still uses one scene and one robot preset. Replay remains analysis-only. The intermittent-anchor condition is a deterministic gating schedule rather than a photorealistic occlusion benchmark. The servo-stress condition is intentionally narrow and should be treated as a first draft of the actuation-realism story rather than a comprehensive stress campaign.
 
-Those limits are acceptable for this draft because the goal is to close the minimum publishable second-pass question: whether a tuned anchored visual--inertial estimator becomes competitive with or better than visual-only control once the first-pass estimator-quality bugs are removed, and under which realistic perturbation the benefit becomes visible.
+Those limits are acceptable for this draft because the goal is now narrower than a broad fused-advantage paper. This second-pass draft closes the minimum publishable stabilization question: whether the anchored visual--inertial estimator can be repaired enough to remain competitive and well calibrated on the nominal benchmark while avoiding catastrophic failure under intermittent anchor loss. It does not establish that fused estimation is generally superior to visual-only control in this setup, and the current suite still leaves visual as the stronger waypoint-tracking baseline.
 
 \end{document}

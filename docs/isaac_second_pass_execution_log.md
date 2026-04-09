@@ -911,3 +911,95 @@ Outcome:
 - conclusion:
   - the lock-promotion and full-suite rerun packet did not regress the frozen
     first-pass publication path
+
+## 2026-04-09 Publication Closure And Narrative Alignment
+
+- commit: `6ef8807`
+
+30. `.venv`
+
+```bash
+python scripts/build_isaac_second_pass_publication.py
+cat output/isaac_runs/latest_second_pass_suite/analysis/publication_build_summary.json
+```
+
+Outcome:
+- completed
+- purpose:
+  - regenerate suite-level paper artifacts from `latest_second_pass_suite` and
+    compile `report_tex/second_pass_publication_draft.tex`
+- result:
+  - `report_tex/second_pass_publication_draft.pdf` exists
+  - `output/isaac_runs/latest_second_pass_suite/analysis/publication_build_summary.json` exists
+  - `artifact_source = latest_second_pass_suite`
+  - `pdf_exists = true`
+  - `placeholders_remaining = false`
+- notes:
+  - the paper-artifact generator was patched so uncertainty coverage values are
+    emitted on the correct scale and intentionally-missing auxiliary NIS fields
+    render as `--` instead of `\ArtifactPending{}`
+  - the manuscript text was rewritten to match the rerun suite's narrower
+    stabilization claim
+
+31. `.venv`
+
+```bash
+rm -rf output/isaac_runs/latest_second_pass_suite/presentation
+python scripts/render_isaac_media_bundle.py
+python scripts/build_isaac_presentation_dashboard.py
+```
+
+Outcome:
+- completed
+- purpose:
+  - regenerate the local presentation bundle and dashboard from the refreshed
+    suite
+- wrote:
+  - `output/isaac_runs/latest_second_pass_suite/presentation/hero_demo.mp4`
+  - `output/isaac_runs/latest_second_pass_suite/presentation/visual_vs_fused_nominal.mp4`
+  - `output/isaac_runs/latest_second_pass_suite/presentation/visual_vs_fused_dropout.mp4`
+  - `output/isaac_runs/latest_second_pass_suite/presentation/actuation_stress_demo.mp4`
+  - `output/isaac_runs/latest_second_pass_suite/presentation/observer_phone_diagnostics.mp4`
+  - `output/isaac_runs/latest_second_pass_suite/presentation/paper_teaser_second_pass.mp4`
+  - `output/isaac_runs/latest_second_pass_suite/presentation/presentation_manifest.json`
+  - `output/isaac_runs/latest_second_pass_suite/presentation/index.html`
+- notes:
+  - the media writer was patched to resize mixed-size teaser frames before
+    encoding so the bundle renders without FFmpeg frame-write warnings
+  - the teaser and dashboard language were aligned to the rerun-suite result:
+    fused is competitive nominally and stable under intermittent anchor, while
+    visual remains the stronger waypoint-tracking baseline
+- conclusion:
+  - the lock now records `draft_ready = true`,
+    `media_artifacts_stale = false`, and a non-null
+    `presentation_manifest_path`
+
+32. `.venv`
+
+```bash
+pytest -q tests/test_isaac_second_pass_suite.py \
+          tests/test_isaac_second_pass_publication.py \
+          tests/test_isaac_second_pass_media_bundle.py
+python scripts/build_isaac_second_pass_publication.py
+python scripts/verify_isaac_first_pass_suite.py
+python scripts/build_isaac_first_pass_publication.py
+```
+
+Outcome:
+- passed
+- result:
+  - targeted second-pass regressions: `4 passed`
+  - second-pass publication build:
+    - `pdf_exists = true`
+    - `placeholders_remaining = false`
+  - first-pass suite verify:
+    - `artifact_source = latest_first_pass_suite`
+    - `ok = true`
+  - first-pass publication build:
+    - `artifact_source = latest_first_pass_suite`
+    - `pdf_exists = true`
+    - `placeholders_remaining = false`
+- conclusion:
+  - the first usable second-pass draft package is now built and verified from
+    the refreshed suite without regressing the frozen first-pass publication
+    path

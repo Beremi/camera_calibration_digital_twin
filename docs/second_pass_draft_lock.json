@@ -3,8 +3,8 @@
     "canonical_seed": 7,
     "classification": "fused_mechanization_or_weighting_bug",
     "commit": "b3f23c9",
-    "current_work_packet_commit": "a1b0d4f",
-    "draft_selection_status": "lock_promoted_and_suite_rerun_complete_pending_publication_refresh",
+    "current_work_packet_commit": "6ef8807",
+    "draft_selection_status": "publication_complete_ready_for_review",
     "dropout_debug_bundle_dir": "output/isaac_runs/latest_second_pass_dropout_debug",
     "dropout_debug_docs_path": "docs/isaac_second_pass_dropout_debug.md",
     "dropout_debug_root_cause_hint": "propagation_process_problem",
@@ -35,10 +35,10 @@
     ]
   },
   "draft_selection": {
-    "draft_readiness_note": "The validated fused suppression winner has now been promoted into the real draft lock, a focused nominal retune selected the lightweight anchor-only configuration with imu_process_covariance_scale = 8.0, vision_covariance_scale = 2.0, and post_relocalization_covariance_scale = 2.0, and the full 18-run second-pass suite has been rerun from that lock. Suite artifacts are now fresh and the fused intermittent-anchor row is no longer catastrophic, but the second-pass publication draft PDF, figures, and media bundle have not yet been regenerated from these refreshed artifacts.",
-    "draft_ready": false,
-    "draft_suite_status": "fresh_suite_rerun_pending_publication_refresh",
-    "draft_suite_status_reason": "The 18-run suite has been rerun from the promoted fused lock, but the second-pass publication draft and media bundle have not yet been regenerated from these refreshed artifacts.",
+    "draft_readiness_note": "The validated fused suppression winner has been promoted into the real draft lock, the focused nominal retune and full 18-run suite rerun are complete, and the second-pass publication draft PDF plus local presentation bundle have now been regenerated from the refreshed suite artifacts. This lock is ready for collaborator review and for the next packet's manuscript-polish or science-expansion work.",
+    "draft_ready": true,
+    "draft_suite_status": "publication_build_complete_pending_media_refresh",
+    "draft_suite_status_reason": "The second-pass PDF now builds cleanly from the refreshed suite artifacts, but the local media bundle and dashboard still need to be regenerated from the same suite before the draft lock can be marked ready.",
     "fused_nominal_backend": "lightweight",
     "fused_nominal_covariance_scales": {
       "accel_process_covariance_scale": null,
@@ -63,9 +63,16 @@
       "use_aux_tags_in_smoother": false
     },
     "latest_nominal_recheck_run_id": "second_pass_tuning_anchor_only_lightweight_seed_007_imu_8p0_vision_2p0_post_2p0_gyro_default_accel_default_supp_gyro_only_gate_10p0_covinfl_8p0",
-    "media_artifacts_stale": true,
-    "media_source_run_ids": [],
-      "packet_winner_candidate": {
+    "media_artifacts_stale": false,
+    "media_source_run_ids": [
+      "second_pass_draft_fused_intermittent_anchor_seed_011",
+      "second_pass_draft_visual_intermittent_anchor_seed_017",
+      "second_pass_draft_fused_nominal_full_anchor_seed_007",
+      "second_pass_draft_visual_nominal_full_anchor_seed_017",
+      "second_pass_draft_fused_servo_stress_seed_017",
+      "second_pass_draft_visual_servo_stress_seed_007"
+    ],
+    "packet_winner_candidate": {
       "bundle_root": "output/isaac_runs/probes/gyro_only_gate_10_validation",
       "fused_intermittent_reference_run_ids": [
         "second_pass_dropout_debug_fused_covinfl_seed_007",
@@ -80,8 +87,10 @@
         "suppression_propagation_mode": "gyro_only"
       },
       "status": "promoted_into_draft_lock"
-      },
-    "presentation_manifest_path": null,
+    },
+    "presentation_manifest_path": "/home/beremi/repos/camera_calibration_digital_twin/output/isaac_runs/latest_second_pass_suite/presentation/presentation_manifest.json",
+    "publication_build_summary_path": "/home/beremi/repos/camera_calibration_digital_twin/output/isaac_runs/latest_second_pass_suite/analysis/publication_build_summary.json",
+    "publication_pdf_path": "/home/beremi/repos/camera_calibration_digital_twin/report_tex/second_pass_publication_draft.pdf",
     "representative_run_ids": {
       "intermittent_anchor": {
         "fused": "second_pass_draft_fused_intermittent_anchor_seed_011",

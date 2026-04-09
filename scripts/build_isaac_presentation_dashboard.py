@@ -62,7 +62,13 @@ def build_dashboard(output_root: Path) -> Path:
         fused_position = fused.get("mean_position_error_m")
         visual_coverage = visual.get("empirical_95_coverage_percent")
         fused_coverage = fused.get("empirical_95_coverage_percent")
-        if fused_waypoint is not None and visual_waypoint is not None and fused_waypoint < visual_waypoint:
+        if condition == "nominal_full_anchor":
+            takeaway = "Fused is competitive on mean position error, while visual remains the stronger waypoint baseline."
+        elif condition == "intermittent_anchor":
+            takeaway = "Fused no longer diverges catastrophically under scheduled anchor suppression, but visual still leads on the current error metrics."
+        elif condition == "servo_stress":
+            takeaway = "Fused remains stable and well calibrated under servo stress, but visual still retains the waypoint advantage."
+        elif fused_waypoint is not None and visual_waypoint is not None and fused_waypoint < visual_waypoint:
             takeaway = "Fused improves waypoint tracking on this condition."
         elif fused_position is not None and visual_position is not None and fused_position < visual_position:
             takeaway = "Fused improves state accuracy on this condition."
@@ -83,7 +89,7 @@ def build_dashboard(output_root: Path) -> Path:
             f"<p class='muted'>Representative runs: {rep_line}</p></section>"
         )
 
-    remaining_weakness = "<p>Second-pass closure is focused on estimator quality. The remaining weakness to watch is whether fused retains its calibration and waypoint-tracking gains under the harder visibility and actuation conditions without introducing smoother-feedback instability.</p>"
+    remaining_weakness = "<p>The second-pass suite now supports a stabilization story rather than a broad fused win. The remaining weakness is practical: visual still leads on waypoint error, and intermittent-anchor fused, while no longer catastrophic, does not yet outperform visual on the current error metrics.</p>"
 
     rows_html = "\n".join(
         [
@@ -223,7 +229,7 @@ def build_dashboard(output_root: Path) -> Path:
     </section>
     <section class="link-panel">
       <h3>What To Look For</h3>
-      <p class="muted">Compare visual and fused under the clean nominal condition first, then watch how the gap changes when anchor updates are suppressed or servo corruption increases. The uncertainty and smoother-feedback figures are there to explain why the trajectory plots change, not just that they do.</p>
+      <p class="muted">Read the nominal condition first, where fused is competitive on mean position error and well calibrated. Then use the intermittent-anchor and servo-stress rows to see that the second-pass result is a repaired, defensible fused baseline rather than a universal fused advantage.</p>
     </section>
   </div>
 

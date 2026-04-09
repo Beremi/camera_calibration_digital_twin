@@ -3,15 +3,25 @@
     "canonical_seed": 7,
     "classification": "fused_mechanization_or_weighting_bug",
     "commit": "b3f23c9",
-    "current_work_packet_commit": "334e5a2",
+    "current_work_packet_commit": "bff0408",
     "draft_selection_status": "blocked_pending_fused_intermittent_anchor_fix",
     "dropout_debug_bundle_dir": "output/isaac_runs/latest_second_pass_dropout_debug",
     "dropout_debug_docs_path": "docs/isaac_second_pass_dropout_debug.md",
+    "dropout_debug_run_ids": [
+      "second_pass_dropout_debug_visual_seed_007",
+      "second_pass_dropout_debug_fused_seed_007",
+      "second_pass_dropout_debug_fused_no_reacq_seed_007",
+      "second_pass_dropout_debug_fused_no_imu_during_suppression_seed_007",
+      "second_pass_dropout_debug_fused_covinfl_seed_007",
+      "second_pass_dropout_debug_fused_clipcorr_seed_007"
+    ],
+    "dropout_debug_root_cause_hint": "propagation_process_problem",
     "exploratory_run_ids": [
       "second_pass_explore_fused_intermittent_aux_estimation_only_seed_007",
       "second_pass_explore_fused_intermittent_aux_for_control_seed_007",
       "second_pass_explore2_fused_nominal_anchor_only_seed_007",
-      "second_pass_explore2_fused_intermittent_anchor_only_seed_007"
+      "second_pass_explore2_fused_intermittent_anchor_only_seed_007",
+      "second_pass_followup_fused_nominal_anchor_only_seed_007"
     ],
     "isolation_bundle_dir": "output/isaac_runs/second_pass_checkpoint_isolation_seed_007",
     "isolation_docs_path": "docs/isaac_second_pass_isolation_summary.md",
@@ -26,9 +36,9 @@
   },
   "draft_selection": {
     "draft_ready": false,
-    "draft_readiness_note": "The first full 18-run suite was completed once, but the current fused selection is not draft-final because intermittent-anchor fused remains catastrophically unstable even after the 2026-04-09 inertial kinematics and camera-frame IMU sampling fixes.",
+    "draft_readiness_note": "The first full 18-run suite was completed once, but the current fused selection is not draft-final because intermittent-anchor fused remains blocked even after the 2026-04-09 inertial kinematics, camera-frame IMU sampling, synthetic IMU conditioning, and suppression-window IMU plausibility-gating fixes. The latest production fused dropout baseline improved to 0.1552 m mean position error with 76.04% coverage and pose NEES 195.95, but that is still not publication-defensible.",
     "draft_suite_status": "stale_until_rerun_after_fused_dropout_fix",
-    "draft_suite_status_reason": "suite_run_ids below were generated before the latest fused-path fixes and should not be treated as draft-final publication inputs until the full suite is rerun",
+    "draft_suite_status_reason": "suite_run_ids below were generated before the latest dropout-debug reruns and before the current suppression-window propagation fixes fully stabilized the production fused intermittent-anchor path; do not treat them as draft-final publication inputs until the full suite is rerun",
     "fused_nominal_backend": "lightweight",
     "fused_nominal_covariance_scales": {
       "accel_process_covariance_scale": null,
@@ -45,6 +55,7 @@
       "use_aux_tags_in_filter": false,
       "use_aux_tags_in_smoother": false
     },
+    "latest_nominal_recheck_run_id": "second_pass_followup_fused_nominal_anchor_only_seed_007",
     "media_source_run_ids": [],
     "presentation_manifest_path": null,
     "representative_run_ids": {

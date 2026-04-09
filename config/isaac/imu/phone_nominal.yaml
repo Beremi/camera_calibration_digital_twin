@@ -9,6 +9,10 @@ read_gravity: false
 imu_semantics: specific_force
 noise_preset: imu_nominal_phone
 gravity_world_mps2: [0.0, 0.0, -9.81]
+synthetic_velocity_lowpass_alpha: 0.25
+synthetic_max_world_velocity_mps: 2.5
+synthetic_max_world_acceleration_mps2: 35.0
+synthetic_max_specific_force_mps2: 40.0
 bias_model:
   accel_bias_initial_mps2: [0.0, 0.0, 0.0]
   gyro_bias_initial_rps: [0.0, 0.0, 0.0]

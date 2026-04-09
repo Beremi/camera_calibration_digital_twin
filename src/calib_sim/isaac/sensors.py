@@ -59,6 +59,19 @@ def _rotation_matrix_to_quaternion_wxyz(rotation: np.ndarray) -> tuple[float, fl
     )
 
 
+def _clip_vector_norm(vector: np.ndarray, max_norm: float | None) -> np.ndarray:
+    values = np.asarray(vector, dtype=np.float64).reshape(3)
+    if max_norm is None:
+        return values
+    max_norm = float(max_norm)
+    if not np.isfinite(max_norm) or max_norm <= 0.0:
+        return values
+    current_norm = float(np.linalg.norm(values))
+    if not np.isfinite(current_norm) or current_norm <= max_norm or current_norm <= 1e-12:
+        return values
+    return (values * (max_norm / current_norm)).astype(np.float64)
+
+
 @dataclass(slots=True)
 class CameraSensorSpec:
     name: str
@@ -120,6 +133,10 @@ class ImuSensorSpec:
     gravity_world_mps2: tuple[float, float, float] = (0.0, 0.0, -9.81)
     imu_semantics: str = "specific_force"
     noise_preset: str = "imu_nominal"
+    synthetic_velocity_lowpass_alpha: float = 0.25
+    synthetic_max_world_velocity_mps: float | None = 2.5
+    synthetic_max_world_acceleration_mps2: float | None = 35.0
+    synthetic_max_specific_force_mps2: float | None = 40.0
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -134,6 +151,16 @@ class ImuSensorSpec:
             "gravity_world_mps2": [float(value) for value in self.gravity_world_mps2],
             "imu_semantics": self.imu_semantics,
             "noise_preset": self.noise_preset,
+            "synthetic_velocity_lowpass_alpha": float(self.synthetic_velocity_lowpass_alpha),
+            "synthetic_max_world_velocity_mps": None
+            if self.synthetic_max_world_velocity_mps is None
+            else float(self.synthetic_max_world_velocity_mps),
+            "synthetic_max_world_acceleration_mps2": None
+            if self.synthetic_max_world_acceleration_mps2 is None
+            else float(self.synthetic_max_world_acceleration_mps2),
+            "synthetic_max_specific_force_mps2": None
+            if self.synthetic_max_specific_force_mps2 is None
+            else float(self.synthetic_max_specific_force_mps2),
         }
 
 
@@ -195,6 +222,16 @@ def imu_spec_from_config(imu_config: dict[str, Any], *, default_prim_path: str, 
         gravity_world_mps2=tuple(float(value) for value in imu_config.get("gravity_world_mps2", (0.0, 0.0, -9.81))),
         imu_semantics=str(imu_config.get("imu_semantics", "specific_force")),
         noise_preset=str(imu_config.get("noise_preset", "imu_nominal")),
+        synthetic_velocity_lowpass_alpha=float(imu_config.get("synthetic_velocity_lowpass_alpha", 0.25)),
+        synthetic_max_world_velocity_mps=None
+        if imu_config.get("synthetic_max_world_velocity_mps") is None
+        else float(imu_config.get("synthetic_max_world_velocity_mps")),
+        synthetic_max_world_acceleration_mps2=None
+        if imu_config.get("synthetic_max_world_acceleration_mps2") is None
+        else float(imu_config.get("synthetic_max_world_acceleration_mps2")),
+        synthetic_max_specific_force_mps2=None
+        if imu_config.get("synthetic_max_specific_force_mps2") is None
+        else float(imu_config.get("synthetic_max_specific_force_mps2")),
     )
 
 
@@ -305,6 +342,7 @@ class IsaacImuBinding:
     previous_position_world_m: np.ndarray | None = None
     previous_velocity_world_mps: np.ndarray | None = None
     previous_rotation_wi: np.ndarray | None = None
+    previous_specific_force_body_mps2: np.ndarray | None = None
 
     @classmethod
     def create(cls, spec: ImuSensorSpec) -> "IsaacImuBinding":
@@ -335,8 +373,19 @@ class IsaacImuBinding:
             gyro_body_rps = np.zeros(3, dtype=np.float64)
         else:
             dt_s = max(float(tick.dt_s), 1e-6)
-            world_velocity_mps = (position_world_m - self.previous_position_world_m) / dt_s
+            raw_velocity_world_mps = (position_world_m - self.previous_position_world_m) / dt_s
+            velocity_alpha = float(self.spec.synthetic_velocity_lowpass_alpha)
+            if not np.isfinite(velocity_alpha) or velocity_alpha <= 0.0 or velocity_alpha > 1.0:
+                velocity_alpha = 1.0
+            world_velocity_mps = self.previous_velocity_world_mps + velocity_alpha * (
+                raw_velocity_world_mps - self.previous_velocity_world_mps
+            )
+            world_velocity_mps = _clip_vector_norm(world_velocity_mps, self.spec.synthetic_max_world_velocity_mps)
             world_acceleration_mps2 = (world_velocity_mps - self.previous_velocity_world_mps) / dt_s
+            world_acceleration_mps2 = _clip_vector_norm(
+                world_acceleration_mps2,
+                self.spec.synthetic_max_world_acceleration_mps2,
+            )
             gyro_body_rps = gyroscope_measurement_body(
                 start_rotation_wi=self.previous_rotation_wi,
                 end_rotation_wi=rotation_wi,
@@ -346,6 +395,10 @@ class IsaacImuBinding:
             rotation_wi=rotation_wi,
             acceleration_world_mps2=world_acceleration_mps2,
             gravity_world_mps2=self.spec.gravity_world_mps2,
+        )
+        specific_force_body_mps2 = _clip_vector_norm(
+            specific_force_body_mps2,
+            self.spec.synthetic_max_specific_force_mps2,
         )
         orientation_wxyz = _rotation_matrix_to_quaternion_wxyz(rotation_wi)
         packet = IsaacImuPacket(
@@ -370,6 +423,7 @@ class IsaacImuBinding:
         self.previous_position_world_m = position_world_m.copy()
         self.previous_velocity_world_mps = world_velocity_mps.copy()
         self.previous_rotation_wi = rotation_wi.copy()
+        self.previous_specific_force_body_mps2 = specific_force_body_mps2.copy()
         return packet
 
 

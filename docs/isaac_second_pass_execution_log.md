@@ -392,10 +392,149 @@ Outcome:
 - purpose: verify the six fixed debug runs and their special dropout flags are
   exposed by the new runner before launching real Isaac jobs
 - result:
-  - planned runs:
+ - planned runs:
     - `second_pass_dropout_debug_visual_seed_007`
     - `second_pass_dropout_debug_fused_seed_007`
     - `second_pass_dropout_debug_fused_no_reacq_seed_007`
     - `second_pass_dropout_debug_fused_no_imu_during_suppression_seed_007`
     - `second_pass_dropout_debug_fused_covinfl_seed_007`
     - `second_pass_dropout_debug_fused_clipcorr_seed_007`
+
+## 2026-04-09 Dropout Propagation Follow-Up
+
+- starting head: `bff0408`
+- preserved pre-draft checkpoint: `b3f23c9`
+- active milestone: `fused-dropout stabilization before draft closure`
+
+### Real dropout-pack reruns and propagation fixes
+
+16. `.venv-isaac`
+
+```bash
+rm -rf output/isaac_runs/second_pass_dropout_debug_* \
+       output/isaac_runs/latest_second_pass_dropout_debug
+python scripts/run_isaac_second_pass_dropout_debug.py --headless --execute-missing
+```
+
+Outcome:
+- completed after fixing a runtime `NameError` in
+  `src/calib_sim/isaac/runtime/main_loop.py`
+- first real bundle showed:
+  - visual reference was sane
+  - baseline fused remained blocked
+  - `fused_no_imu_during_suppression` cleared the blocker bar
+  - `fused_covinfl` and `fused_clipcorr` did not rescue the run
+- conclusion:
+  - the blocker is not the smoother and not a pure reacquisition-only failure
+  - the dominant mechanism is suppression-window propagation
+
+17. local code change + `.venv`
+
+```bash
+pytest -q tests/test_imu_semantics.py tests/test_isaac_mode_semantics.py
+```
+
+Outcome:
+- passed
+- purpose: lock in the two new propagation-side fixes:
+  - synthetic IMU conditioning in `src/calib_sim/isaac/sensors.py`
+  - suppression-window specific-force gating in
+    `src/calib_sim/isaac/runtime/main_loop.py`
+- effect:
+  - production fused intermittent-anchor improved from catastrophic suite
+    failure to an interpretable but still blocked regime
+
+18. `.venv-isaac`
+
+```bash
+rm -rf output/isaac_runs/second_pass_dropout_debug_* \
+       output/isaac_runs/latest_second_pass_dropout_debug
+python scripts/run_isaac_second_pass_dropout_debug.py --headless --execute-missing
+```
+
+Outcome:
+- completed
+- current bundle:
+  - `output/isaac_runs/latest_second_pass_dropout_debug/summary.json`
+  - `output/isaac_runs/latest_second_pass_dropout_debug/summary.csv`
+  - `docs/isaac_second_pass_dropout_debug.md`
+- key results:
+  - `second_pass_dropout_debug_visual_seed_007`
+    - mean position error: `0.01555 m`
+    - coverage: `99.79%`
+    - pose NEES: `4.21`
+  - `second_pass_dropout_debug_fused_seed_007`
+    - mean position error: `0.15517 m`
+    - mean waypoint error: `0.02421 m`
+    - coverage: `76.04%`
+    - pose NEES: `195.95`
+    - root-cause hint: `propagation_process_problem`
+  - `second_pass_dropout_debug_fused_no_imu_during_suppression_seed_007`
+    - mean position error: `0.01367 m`
+    - coverage: `99.38%`
+    - pose NEES: `4.06`
+    - blocker clear: `true`
+- conclusion:
+  - the production fused baseline is materially improved but still blocked
+  - the branch must not reopen the 18-run suite, second-pass PDF, or polished
+    media yet
+
+19. `.venv-isaac`
+
+```bash
+python scripts/run_isaac_anchor_vio.py \
+  --headless \
+  --duration-s 8.0 \
+  --seed 7 \
+  --run-id second_pass_followup_fused_nominal_anchor_only_seed_007 \
+  --estimator-mode fused \
+  --controller-mode closed-loop \
+  --bootstrap-control-policy hold_until_first_detection \
+  --smoother-backend lightweight \
+  --vision-covariance-scale 4.0 \
+  --imu-process-covariance-scale 8.0 \
+  --post-relocalization-covariance-scale 1.0 \
+  --no-use-aux-tags-in-filter \
+  --no-use-aux-tags-in-smoother \
+  --no-use-aux-map-for-control \
+  --no-promote-global-latest
+```
+
+Outcome:
+- completed
+- purpose: recheck nominal fused seed-`007` after the suppression-window
+  propagation fixes before considering any further dropout iteration
+- result:
+  - mean position error: `0.01284 m`
+  - mean waypoint error: `0.02392 m`
+  - empirical 95% coverage: `99.79%`
+  - pose NEES: `3.97`
+- conclusion:
+  - the latest propagation-side fixes did not regress nominal fused stability
+
+20. `.venv`
+
+```bash
+pytest -q tests/test_imu_semantics.py \
+          tests/test_isaac_mode_semantics.py \
+          tests/test_isaac_second_pass_switches.py \
+          tests/test_isaac_second_pass_dropout_debug.py \
+          tests/test_isaac_second_pass_tuning.py \
+          tests/test_isaac_second_pass_suite.py \
+          tests/test_isaac_second_pass_media_bundle.py
+python scripts/verify_isaac_first_pass_suite.py
+python scripts/build_isaac_first_pass_publication.py
+```
+
+Outcome:
+- passed
+- result:
+  - regression slice: `24 passed`
+  - first-pass suite verify: `ok = true`
+  - first-pass publication build:
+    - `artifact_source = latest_first_pass_suite`
+    - `placeholders_remaining = false`
+- extra note:
+  - `scripts/run_isaac_anchor_vio.py --validate-config-only` now writes a run
+    manifest that matches the actual overridden estimator/control config rather
+    than the raw YAML defaults

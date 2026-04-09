@@ -38,6 +38,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--headless", action="store_true", default=False)
     parser.add_argument("--execute-missing", action="store_true", default=False)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--gyro-process-covariance-scale", type=float, default=None)
+    parser.add_argument("--accel-process-covariance-scale", type=float, default=None)
+    parser.add_argument("--suppression-imu-specific-force-gate-mps2", type=float, default=None)
     parser.add_argument("--docs-path", default=str(DEFAULT_SECOND_PASS_DROPOUT_DEBUG_DOC))
     return parser.parse_args()
 
@@ -90,6 +93,18 @@ def _run_command(args: argparse.Namespace, spec: dict[str, Any]) -> list[str]:
         "--no-promote-global-latest",
     ]
     debug_mode = str(spec["debug_mode"])
+    if str(spec["estimator_mode"]) == "fused":
+        if args.gyro_process_covariance_scale is not None:
+            command.extend(["--gyro-process-covariance-scale", str(args.gyro_process_covariance_scale)])
+        if args.accel_process_covariance_scale is not None:
+            command.extend(["--accel-process-covariance-scale", str(args.accel_process_covariance_scale)])
+        if args.suppression_imu_specific_force_gate_mps2 is not None:
+            command.extend(
+                [
+                    "--suppression-imu-specific-force-gate-mps2",
+                    str(args.suppression_imu_specific_force_gate_mps2),
+                ]
+            )
     if debug_mode == "fused_no_reacquisition":
         command.append("--no-allow-anchor-reacquisition-after-first-lock")
     elif debug_mode == "fused_no_imu_during_suppression":

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -52,10 +53,10 @@ class IsaacRunManifest:
             "estimator_mode": self.estimator_mode,
             "controller_mode": self.controller_mode,
             "bootstrap_control_policy": self.bootstrap_control_policy,
-            "noise_presets": dict(self.noise_presets),
+            "noise_presets": copy.deepcopy(self.noise_presets),
             "random_seed": int(self.random_seed),
-            "controller_config": dict(self.controller_config),
-            "estimator_config": dict(self.estimator_config),
+            "controller_config": copy.deepcopy(self.controller_config),
+            "estimator_config": copy.deepcopy(self.estimator_config),
             "ros2_bridge_used": bool(self.ros2_bridge_used),
             "created_at_utc": self.created_at_utc,
         }
@@ -89,9 +90,9 @@ def build_run_manifest(
         estimator_mode=str(estimator_mode),
         controller_mode=str(controller_mode),
         bootstrap_control_policy=str(bootstrap_control_policy),
-        noise_presets=dict(noise_presets),
+        noise_presets=copy.deepcopy(noise_presets),
         random_seed=int(random_seed),
-        controller_config=dict(controller_config),
-        estimator_config=dict(estimator_config),
+        controller_config=copy.deepcopy(controller_config),
+        estimator_config=copy.deepcopy(estimator_config),
         ros2_bridge_used=bool(ros2_bridge_used),
     )

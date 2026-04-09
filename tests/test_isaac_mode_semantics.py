@@ -6,7 +6,7 @@ import numpy as np
 
 from calib_sim.isaac.app import IsaacAppBootstrapConfig, create_runtime
 from calib_sim.isaac.estimation.online_filter import AnchoredOnlineFilter
-from calib_sim.isaac.logging.schemas import IsaacImuPacket
+from calib_sim.isaac.logging.schemas import IsaacCameraFramePacket, IsaacImuPacket
 
 
 def _bootstrap(tmp_path, *, estimator_mode: str, controller_mode: str, bootstrap_control_policy: str = "hold_until_first_detection"):
@@ -46,6 +46,24 @@ def _rotating_packets() -> tuple[IsaacImuPacket, ...]:
             imu_semantics="specific_force",
             noise_preset="ideal",
         ),
+    )
+
+
+def _imu_packet(*, ax: float, ay: float, az: float, wx: float = 0.0, wy: float = 0.0, wz: float = 0.0) -> IsaacImuPacket:
+    return IsaacImuPacket(
+        packet_index=0,
+        timestamp_s=0.01,
+        sim_time_s=0.01,
+        dt_s=0.01,
+        wx=wx,
+        wy=wy,
+        wz=wz,
+        ax=ax,
+        ay=ay,
+        az=az,
+        imu_frame="I",
+        imu_semantics="specific_force",
+        noise_preset="ideal",
     )
 
 
@@ -202,3 +220,59 @@ def test_imu_sampling_uses_camera_pose_when_available(tmp_path) -> None:
     assert len(runtime._imu_binding.positions) == 1
     assert np.allclose(runtime._imu_binding.positions[0], np.array([0.55, -0.40, 1.16], dtype=np.float64))
     assert np.allclose(runtime._imu_binding.rotations[0], np.eye(3), atol=1e-9)
+
+
+def test_dropout_debug_frame_logging_writes_csv_row(tmp_path) -> None:
+    runtime = create_runtime(_bootstrap(tmp_path, estimator_mode="fused", controller_mode="closed-loop"))
+    runtime._filter = AnchoredOnlineFilter.identity_initialized(estimator_mode="fused")
+    runtime._last_anchor_visible_raw = True
+    runtime._last_anchor_visible = True
+    runtime._camera_interval_imu_packets = [object(), object()]
+    frame_packet = IsaacCameraFramePacket(
+        frame_index=3,
+        timestamp_s=0.5,
+        sim_time_s=0.5,
+        sensor_time_s=0.5,
+        host_time_s=0.5,
+        rgb_path="raw/rgb/frame_000003.png",
+        intrinsics_snapshot={"fx_px": 1.0, "fy_px": 1.0, "cx_px": 0.0, "cy_px": 0.0},
+        extrinsics_snapshot={
+            "frame_id": "C",
+            "position_world_m": [0.0, 0.0, 0.0],
+            "orientation_wxyz": [1.0, 0.0, 0.0, 0.0],
+        },
+        image_width_px=1280,
+        image_height_px=720,
+        visible_gt_tag_ids=[0],
+    )
+
+    runtime._write_dropout_debug_frame(
+        frame_index=3,
+        timestamp_s=0.5,
+        frame_packet=frame_packet,
+        suppression_active=True,
+        imu_prediction_disabled=False,
+    )
+
+    debug_csv = runtime.writer.raw_dir / "dropout_debug_frames.csv"
+    assert debug_csv.exists()
+    text = debug_csv.read_text(encoding="utf-8")
+    assert "position_error_norm_m" in text
+    assert "0.5" in text
+
+
+def test_suppression_specific_force_gate_filters_implausible_imu_packets(tmp_path) -> None:
+    runtime = create_runtime(_bootstrap(tmp_path, estimator_mode="fused", controller_mode="closed-loop"))
+    runtime._suppression_imu_specific_force_gate_mps2 = 20.0
+
+    packets = (
+        _imu_packet(ax=0.0, ay=0.0, az=9.81),
+        _imu_packet(ax=18.0, ay=0.0, az=5.0),
+        _imu_packet(ax=25.0, ay=0.0, az=30.0),
+    )
+
+    filtered = runtime._filter_imu_packets_for_prediction(packets, suppression_active=True)
+
+    assert len(filtered) == 2
+    assert runtime._last_imu_packets_used_for_prediction == 2
+    assert runtime._last_imu_packets_rejected_for_prediction == 1

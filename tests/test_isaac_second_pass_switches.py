@@ -84,4 +84,60 @@ def test_run_script_dry_run_exposes_auxiliary_isolation_switches(tmp_path: Path)
     assert estimation_filter["dropout_max_reacquisition_position_correction_m"] == 0.05
     assert estimation_filter["dropout_max_reacquisition_rotation_correction_deg"] == 5.0
     assert estimation_filter["dropout_max_reacquisition_velocity_correction_mps"] == 0.2
+    assert estimation_filter["anchor_reacquisition_max_innovation_norm"] is None
+    assert estimation_filter["anchor_reacquisition_max_nis"] is None
     assert payload["config_snapshots"]["visibility"]["name"] == "anchor_dropout_nominal"
+    assert payload["manifest"]["controller_config"]["use_aux_map_for_control"] is False
+    manifest_filter = payload["manifest"]["estimator_config"]["filter"]
+    manifest_smoother = payload["manifest"]["estimator_config"]["smoother"]
+    assert manifest_filter["use_aux_tags_in_filter"] is False
+    assert manifest_smoother["use_aux_tags_in_smoother"] is False
+    assert manifest_smoother["backend"] == "windowed_ba"
+    assert manifest_filter["vision_covariance_scale"] == 2.0
+    assert manifest_filter["anchor_vision_covariance_scale"] == 5.0
+    assert manifest_filter["aux_vision_covariance_scale"] == 6.0
+    assert manifest_filter["imu_process_covariance_scale"] == 3.0
+    assert manifest_filter["gyro_process_covariance_scale"] == 7.0
+    assert manifest_filter["accel_process_covariance_scale"] == 8.0
+    assert manifest_filter["post_relocalization_covariance_scale"] == 4.0
+    assert manifest_filter["allow_anchor_reacquisition_after_first_lock"] is False
+    assert manifest_filter["disable_imu_prediction_while_anchor_suppressed"] is True
+    assert manifest_filter["dropout_post_reacquisition_covariance_scale"] == 8.0
+    assert manifest_filter["dropout_max_reacquisition_position_correction_m"] == 0.05
+    assert manifest_filter["dropout_max_reacquisition_rotation_correction_deg"] == 5.0
+    assert manifest_filter["dropout_max_reacquisition_velocity_correction_mps"] == 0.2
+
+
+def test_run_script_dry_run_exposes_reacquisition_and_suppression_gate_switches(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    output_root = tmp_path / "output" / "isaac_runs"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "run_isaac_anchor_vio.py"),
+            "--validate-config-only",
+            "--output-root",
+            str(output_root),
+            "--run-id",
+            "reacq_probe",
+            "--anchor-reacquisition-max-innovation-norm",
+            "0.25",
+            "--anchor-reacquisition-max-nis",
+            "32.0",
+            "--suppression-imu-specific-force-gate-mps2",
+            "10.0",
+        ],
+        cwd=str(repo_root),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    estimation_filter = payload["config_snapshots"]["estimation"]["filter"]
+    assert estimation_filter["anchor_reacquisition_max_innovation_norm"] == 0.25
+    assert estimation_filter["anchor_reacquisition_max_nis"] == 32.0
+    assert estimation_filter["suppression_imu_specific_force_gate_mps2"] == 10.0
+    manifest_filter = payload["manifest"]["estimator_config"]["filter"]
+    assert manifest_filter["anchor_reacquisition_max_innovation_norm"] == 0.25
+    assert manifest_filter["anchor_reacquisition_max_nis"] == 32.0
+    assert manifest_filter["suppression_imu_specific_force_gate_mps2"] == 10.0

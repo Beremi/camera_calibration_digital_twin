@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 from datetime import datetime, timezone
 import importlib.metadata
 import json
@@ -86,6 +87,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dropout-max-reacquisition-position-correction-m", type=float, default=None)
     parser.add_argument("--dropout-max-reacquisition-rotation-correction-deg", type=float, default=None)
     parser.add_argument("--dropout-max-reacquisition-velocity-correction-mps", type=float, default=None)
+    parser.add_argument("--anchor-reacquisition-max-innovation-norm", type=float, default=None)
+    parser.add_argument("--anchor-reacquisition-max-nis", type=float, default=None)
+    parser.add_argument("--suppression-imu-specific-force-gate-mps2", type=float, default=None)
     return parser.parse_args()
 
 
@@ -159,6 +163,16 @@ def _apply_second_pass_overrides(config_payloads: dict[str, dict[str, object]], 
         filter_config["dropout_max_reacquisition_velocity_correction_mps"] = float(
             args.dropout_max_reacquisition_velocity_correction_mps
         )
+    if args.anchor_reacquisition_max_innovation_norm is not None:
+        filter_config["anchor_reacquisition_max_innovation_norm"] = float(
+            args.anchor_reacquisition_max_innovation_norm
+        )
+    if args.anchor_reacquisition_max_nis is not None:
+        filter_config["anchor_reacquisition_max_nis"] = float(args.anchor_reacquisition_max_nis)
+    if args.suppression_imu_specific_force_gate_mps2 is not None:
+        filter_config["suppression_imu_specific_force_gate_mps2"] = float(
+            args.suppression_imu_specific_force_gate_mps2
+        )
 
 
 def _inject_optional_config(
@@ -222,8 +236,8 @@ def main() -> int:
             "actuation": str(runtime.config.config_payloads["actuation"].get("name", Path(args.actuation_config).stem)),
         },
         random_seed=int(args.seed),
-        controller_config=load_isaac_yaml(args.control_config),
-        estimator_config=load_isaac_yaml(args.estimation_config),
+        controller_config=copy.deepcopy(runtime.config.config_payloads["control"]),
+        estimator_config=copy.deepcopy(runtime.config.config_payloads["estimation"]),
         ros2_bridge_used=False,
     )
     writer.write_manifest(manifest)

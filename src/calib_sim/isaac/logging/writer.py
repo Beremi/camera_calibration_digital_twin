@@ -107,6 +107,8 @@ class IsaacRunWriter:
                 "suppression_active",
                 "imu_prediction_disabled",
                 "imu_packets_since_last_frame",
+                "imu_packets_used_for_prediction",
+                "imu_packets_rejected_for_prediction",
                 "propagation_dt_s",
                 "position_error_norm_m",
                 "velocity_norm_mps",

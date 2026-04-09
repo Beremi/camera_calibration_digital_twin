@@ -2,6 +2,7 @@
 
 ## Current Work Packet
 
+- current debug-pack head: `bff0408`
 - working baseline commit SHA: `334e5a2`
 - preserved pre-draft checkpoint: `b3f23c9`
 - current milestone: `fused-dropout stabilization before draft closure`
@@ -24,15 +25,39 @@ What is true right now:
   anchor-only fused lock
 - that suite showed catastrophic fused intermittent-anchor instability while
   visual remained well behaved
-- two fused-path fixes have since landed during this work packet:
-  - the inertial helper now uses standard constant-acceleration position
+- the dedicated six-run seed-`007` dropout debug pack has now been executed on
+  real Isaac runs
+- four fused-path repairs are now in place:
+  - the inertial helper uses standard constant-acceleration position
     kinematics instead of the old doubled position update
-  - the runtime now samples synthetic IMU motion from the live camera pose
+  - the runtime samples synthetic IMU motion from the live camera pose
     instead of the end-effector pose
-- those fixes improved fused nominal seed-`007` anchor-only accuracy to
-  `0.01556 m` mean position error with sane calibration, but the
-  intermittent-anchor fused rerun is still catastrophic at about `248.74 m`
-  mean position error and `1.42e7` pose NEES
+  - the synthetic IMU path now low-pass filters and clips numerically
+    differentiated velocity, acceleration, and specific force
+  - the runtime now rejects implausible high-specific-force IMU packets during
+    suppression windows before fused prediction
+- after those fixes, the production fused intermittent-anchor baseline has
+  improved from catastrophic draft-suite failure to a still-blocked but
+  interpretable regime:
+  - `second_pass_dropout_debug_fused_seed_007`
+    - mean position error: `0.15517 m`
+    - mean waypoint error: `0.02421 m`
+    - empirical 95% coverage: `76.04%`
+    - pose NEES: `195.95`
+    - root-cause hint: `propagation_process_problem`
+- the diagnostic `second_pass_dropout_debug_fused_no_imu_during_suppression_seed_007`
+  variant clears the blocker bar cleanly, which localizes the remaining defect
+  to suppression-window propagation rather than the smoother or a pure
+  reacquisition-only failure
+- the latest nominal fused recheck stayed healthy while the dropout fixes were
+  landing:
+  - `second_pass_followup_fused_nominal_anchor_only_seed_007`
+    - mean position error: `0.01284 m`
+    - mean waypoint error: `0.02392 m`
+    - empirical 95% coverage: `99.79%`
+    - pose NEES: `3.97`
+- future runs now persist the actual overridden estimator/control configuration
+  into the saved run manifest rather than the raw YAML defaults
 
 The practical conclusion is simple: the branch is not blocked on tables,
 figures, or media anymore. It is blocked on one remaining fused runtime or
@@ -245,7 +270,9 @@ draft claim to be strong on the clean condition.
 
 That note now needs one explicit caveat: the current lock and suite membership
 should be treated as diagnostic rather than draft-final. The lock still points
-to the best nominal fused candidate collected so far, but the dropout condition
-remains unresolved even after the latest fused propagation fixes. The next
+to the best nominal fused candidate collected so far, and the latest nominal
+follow-up run stayed healthy after the suppression-window propagation fixes.
+But the dropout condition remains unresolved even after those fixes. The next
 closure move is therefore a rerun of the draft suite only after the fused
-intermittent-anchor path is numerically sane.
+intermittent-anchor path is numerically sane under the production fused method,
+not merely under the diagnostic `no_imu_during_suppression` probe.

@@ -18,6 +18,9 @@ filter:
   post_relocalization_covariance_scale: 1.0
   allow_anchor_reacquisition_after_first_lock: true
   disable_imu_prediction_while_anchor_suppressed: false
+  suppression_imu_specific_force_gate_mps2: 20.0
+  anchor_reacquisition_max_innovation_norm: null
+  anchor_reacquisition_max_nis: null
   dropout_post_reacquisition_covariance_scale: null
   dropout_max_reacquisition_position_correction_m: null
   dropout_max_reacquisition_rotation_correction_deg: null

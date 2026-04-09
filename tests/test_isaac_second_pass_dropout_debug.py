@@ -60,6 +60,41 @@ def test_dropout_debug_runner_dry_run_exposes_fixed_run_ids_and_debug_flags(tmp_
     ]
 
 
+def test_dropout_debug_runner_accepts_split_process_and_suppression_gate_overrides(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    output_root = tmp_path / "output" / "isaac_runs"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "run_isaac_second_pass_dropout_debug.py"),
+            "--output-root",
+            str(output_root),
+            "--gyro-process-covariance-scale",
+            "2.0",
+            "--accel-process-covariance-scale",
+            "8.0",
+            "--suppression-imu-specific-force-gate-mps2",
+            "10.0",
+            "--dry-run",
+        ],
+        cwd=str(repo_root),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    fused_commands = [
+        entry["command"]
+        for entry in payload["planned_runs"]
+        if entry["estimator_mode"] == "fused"
+    ]
+    assert fused_commands
+    for command in fused_commands:
+        assert "--gyro-process-covariance-scale" in command
+        assert "--accel-process-covariance-scale" in command
+        assert "--suppression-imu-specific-force-gate-mps2" in command
+
+
 def test_dropout_debug_artifacts_and_bundle_write_expected_schema(tmp_path: Path) -> None:
     output_root = tmp_path / "output" / "isaac_runs"
     docs_path = tmp_path / "docs" / "isaac_second_pass_dropout_debug.md"

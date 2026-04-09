@@ -5,8 +5,10 @@ from __future__ import annotations
 import numpy as np
 
 from calib_sim.common.inertial import accelerometer_specific_force_body, gyroscope_measurement_body
+from calib_sim.isaac.clocks import ScheduledSensorTick, TimestampTriplet
 from calib_sim.isaac.estimation.imu_preintegration import preintegrate_imu_packets
 from calib_sim.isaac.logging.schemas import IsaacImuPacket
+from calib_sim.isaac.sensors import IsaacImuBinding, ImuSensorSpec
 
 
 def test_accelerometer_specific_force_is_explicit_at_rest() -> None:
@@ -65,3 +67,37 @@ def test_preintegration_preserves_stationary_state_for_specific_force_packets() 
     assert np.allclose(delta.final_position_world_m, 0.0, atol=1e-9)
     assert np.allclose(delta.final_velocity_world_mps, 0.0, atol=1e-9)
     assert np.allclose(delta.final_rotation_wi, np.eye(3), atol=1e-9)
+
+
+def test_isaac_imu_binding_caps_unphysical_pose_differentiation_spikes() -> None:
+    spec = ImuSensorSpec(
+        name="imu",
+        rate_hz=200.0,
+        frame_id="I",
+        prim_path="/World/Robot/imu",
+        parent_prim_path="/World/Robot",
+        synthetic_velocity_lowpass_alpha=1.0,
+        synthetic_max_world_velocity_mps=2.0,
+        synthetic_max_world_acceleration_mps2=20.0,
+        synthetic_max_specific_force_mps2=25.0,
+    )
+    binding = IsaacImuBinding.create(spec)
+    timestamps = TimestampTriplet(sim_time_s=0.0, sensor_time_s=0.0, host_time_s=0.0)
+
+    packet0 = binding.sample(
+        tick=ScheduledSensorTick(sample_index=0, sim_time_s=0.005, dt_s=0.005),
+        timestamps=timestamps,
+        position_world_m=np.zeros(3, dtype=np.float64),
+        rotation_wi=np.eye(3, dtype=np.float64),
+    )
+    packet1 = binding.sample(
+        tick=ScheduledSensorTick(sample_index=1, sim_time_s=0.010, dt_s=0.005),
+        timestamps=timestamps,
+        position_world_m=np.array([1.0, 0.0, 0.0], dtype=np.float64),
+        rotation_wi=np.eye(3, dtype=np.float64),
+    )
+
+    assert packet0 is not None
+    assert packet1 is not None
+    assert np.linalg.norm(binding.previous_velocity_world_mps) <= 2.0 + 1e-9
+    assert np.linalg.norm(np.array([packet1.ax, packet1.ay, packet1.az], dtype=np.float64)) <= 25.0 + 1e-9

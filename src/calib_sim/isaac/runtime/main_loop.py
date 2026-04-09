@@ -17,6 +17,7 @@ from calib_sim.isaac.control.safety_gates import SafetyGates
 from calib_sim.isaac.control.waypoint_manager import Waypoint, WaypointManager
 from calib_sim.isaac.estimation.fixed_lag_smoother import FixedLagSmoother
 from calib_sim.isaac.estimation.online_filter import AnchoredOnlineFilter
+from calib_sim.isaac.estimation.uncertainty import sanitize_covariance
 from calib_sim.isaac.estimation.windowed_anchor_ba import WindowedAnchorBASmoother
 from calib_sim.isaac.frontend.apriltag_frontend import IsaacAprilTagFrontend
 from calib_sim.isaac.logging.schemas import (
@@ -242,6 +243,9 @@ class IsaacStandaloneRuntime:
         self._camera_interval_imu_packets: list[Any] = []
         self._last_camera_timestamp_s: float | None = None
         self._disable_imu_prediction_while_anchor_suppressed = False
+        self._suppression_imu_specific_force_gate_mps2: float | None = None
+        self._last_imu_packets_used_for_prediction = 0
+        self._last_imu_packets_rejected_for_prediction = 0
 
     @property
     def writer(self) -> IsaacRunWriter:
@@ -366,6 +370,10 @@ class IsaacStandaloneRuntime:
         self._disable_imu_prediction_while_anchor_suppressed = bool(
             filter_config.get("disable_imu_prediction_while_anchor_suppressed", False)
         )
+        if filter_config.get("suppression_imu_specific_force_gate_mps2") not in (None, ""):
+            self._suppression_imu_specific_force_gate_mps2 = float(
+                filter_config.get("suppression_imu_specific_force_gate_mps2")
+            )
         smoother_backend = str(smoother_config.get("backend", "lightweight")).strip().lower()
         if smoother_backend == "windowed_ba":
             self._smoother = WindowedAnchorBASmoother(
@@ -589,6 +597,8 @@ class IsaacStandaloneRuntime:
                 "suppression_active": bool(suppression_active),
                 "imu_prediction_disabled": bool(imu_prediction_disabled),
                 "imu_packets_since_last_frame": int(len(self._camera_interval_imu_packets)),
+                "imu_packets_used_for_prediction": int(self._last_imu_packets_used_for_prediction),
+                "imu_packets_rejected_for_prediction": int(self._last_imu_packets_rejected_for_prediction),
                 "propagation_dt_s": float(max(propagation_dt_s, 0.0)),
                 "position_error_norm_m": position_error_norm_m,
                 "velocity_norm_mps": float(np.linalg.norm(np.asarray(self._filter.state.velocity_world_mps, dtype=np.float64))),
@@ -601,6 +611,30 @@ class IsaacStandaloneRuntime:
         )
         self._last_camera_timestamp_s = float(timestamp_s)
         self._camera_interval_imu_packets.clear()
+
+    def _filter_imu_packets_for_prediction(
+        self,
+        imu_packets: tuple[IsaacImuPacket, ...],
+        *,
+        suppression_active: bool,
+    ) -> tuple[IsaacImuPacket, ...]:
+        if not imu_packets:
+            self._last_imu_packets_used_for_prediction = 0
+            self._last_imu_packets_rejected_for_prediction = 0
+            return ()
+        filtered_packets = imu_packets
+        rejected_count = 0
+        if suppression_active and self._suppression_imu_specific_force_gate_mps2 not in (None, ""):
+            gate = max(float(self._suppression_imu_specific_force_gate_mps2), 0.0)
+            filtered_packets = tuple(
+                packet
+                for packet in imu_packets
+                if float(np.linalg.norm(np.array([packet.ax, packet.ay, packet.az], dtype=np.float64))) <= gate
+            )
+            rejected_count = len(imu_packets) - len(filtered_packets)
+        self._last_imu_packets_used_for_prediction = len(filtered_packets)
+        self._last_imu_packets_rejected_for_prediction = rejected_count
+        return filtered_packets
 
     def _log_realized_state(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         if self._robot_binding is None:
@@ -1276,9 +1310,19 @@ class IsaacStandaloneRuntime:
         if self._filter is not None and imu_packets:
             suppression_active = self._anchor_updates_suppressed(timestamp_s=float(self._sim_time_s))
             if suppression_active and self._disable_imu_prediction_while_anchor_suppressed:
+                self._last_imu_packets_used_for_prediction = 0
+                self._last_imu_packets_rejected_for_prediction = len(imu_packets)
                 pass
             else:
-                self._filter.predict(imu_packets)
+                packets_for_prediction = self._filter_imu_packets_for_prediction(
+                    imu_packets,
+                    suppression_active=bool(suppression_active),
+                )
+                if packets_for_prediction:
+                    self._filter.predict(packets_for_prediction)
+        else:
+            self._last_imu_packets_used_for_prediction = 0
+            self._last_imu_packets_rejected_for_prediction = 0
         self._process_camera(timestamps)
         self._log_filter_and_uncertainty()
         self._log_smoother()

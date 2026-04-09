@@ -1,0 +1,36 @@
+{
+  "artifact_policy": "Second-pass review outputs under output/isaac_runs remain local/generated artifacts. Regenerate them after cloning with scripts/build_isaac_second_pass_review_bundle.py.",
+  "commands": [
+    "source .venv/bin/activate",
+    "python scripts/build_isaac_second_pass_review_bundle.py"
+  ],
+  "dashboard_path": "output/isaac_runs/latest_second_pass_suite/presentation/index.html",
+  "draft_pdf_path": "report_tex/second_pass_publication_draft.pdf",
+  "lock_path": "docs/second_pass_draft_lock.json",
+  "packet_head": "6ec3cec",
+  "presentation_manifest_path": "output/isaac_runs/latest_second_pass_suite/presentation/presentation_manifest.json",
+  "publication_build_summary_path": "output/isaac_runs/latest_second_pass_suite/analysis/publication_build_summary.json",
+  "recommended_start_points": [
+    "docs/isaac_second_pass_handoff.md",
+    "docs/isaac_second_pass_key_findings.md",
+    "report_tex/second_pass_publication_draft.tex",
+    "report_tex/second_pass_publication_draft.pdf",
+    "output/isaac_runs/latest_second_pass_suite/presentation/index.html"
+  ],
+  "representative_run_ids": {
+    "intermittent_anchor": {
+      "fused": "second_pass_draft_fused_intermittent_anchor_seed_011",
+      "visual": "second_pass_draft_visual_intermittent_anchor_seed_017"
+    },
+    "nominal_full_anchor": {
+      "fused": "second_pass_draft_fused_nominal_full_anchor_seed_007",
+      "visual": "second_pass_draft_visual_nominal_full_anchor_seed_017"
+    },
+    "servo_stress": {
+      "fused": "second_pass_draft_fused_servo_stress_seed_017",
+      "visual": "second_pass_draft_visual_servo_stress_seed_007"
+    }
+  },
+  "review_manifest_path": "docs/second_pass_review_manifest.json",
+  "suite_summary_json": "output/isaac_runs/latest_second_pass_suite/analysis/suite_summary.json"
+}

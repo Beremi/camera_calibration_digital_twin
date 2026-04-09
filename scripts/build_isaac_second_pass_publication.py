@@ -20,6 +20,14 @@ DEFAULT_OUTPUT_ROOT = REPO_ROOT / "output" / "isaac_runs"
 DEFAULT_REPORT_TEX_DIR = REPO_ROOT / "report_tex"
 
 
+def _repo_relative(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
@@ -74,17 +82,31 @@ def build_second_pass_publication(
     if lock_path.exists():
         lock_payload = json.loads(lock_path.read_text(encoding="utf-8"))
         draft_selection = lock_payload.setdefault("draft_selection", {})
-        draft_selection["publication_build_summary_path"] = str(summary_path.resolve())
-        draft_selection["publication_pdf_path"] = str(pdf_path)
+        draft_selection["publication_build_summary_path"] = _repo_relative(summary_path)
+        draft_selection["publication_pdf_path"] = _repo_relative(pdf_path)
+        manifest_rel = draft_selection.get("presentation_manifest_path")
+        manifest_exists = False
+        if manifest_rel:
+            manifest_path = REPO_ROOT / str(manifest_rel)
+            manifest_exists = manifest_path.exists()
         if build_summary["pdf_exists"] and not build_summary["placeholders_remaining"]:
-            draft_selection["draft_suite_status"] = "publication_build_complete_pending_media_refresh"
-            draft_selection[
-                "draft_suite_status_reason"
-            ] = (
-                "The second-pass PDF now builds cleanly from the refreshed suite artifacts, "
-                "but the local media bundle and dashboard still need to be regenerated from the "
-                "same suite before the draft lock can be marked ready."
-            )
+            if manifest_exists and not bool(draft_selection.get("media_artifacts_stale", True)):
+                draft_selection["draft_suite_status"] = "review_bundle_ready"
+                draft_selection[
+                    "draft_suite_status_reason"
+                ] = (
+                    "The second-pass PDF, presentation bundle, and dashboard have all been rebuilt "
+                    "from the refreshed suite artifacts and are ready for collaborator review."
+                )
+            else:
+                draft_selection["draft_suite_status"] = "publication_build_complete_pending_media_refresh"
+                draft_selection[
+                    "draft_suite_status_reason"
+                ] = (
+                    "The second-pass PDF now builds cleanly from the refreshed suite artifacts, "
+                    "but the local media bundle and dashboard still need to be regenerated from the "
+                    "same suite before the draft lock can be marked ready."
+                )
         lock_path.write_text(json.dumps(lock_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return build_summary
 

@@ -155,6 +155,581 @@ def _save_histogram(path: Path, *, title: str, values: list[float], x_label: str
     cv2.imwrite(str(path), canvas)
 
 
+def _draw_polyline(
+    canvas: np.ndarray,
+    points: list[tuple[int, int]],
+    *,
+    color: tuple[int, int, int],
+    thickness: int = 2,
+    dashed: bool = False,
+) -> None:
+    if len(points) < 2:
+        return
+    if not dashed:
+        cv2.polylines(canvas, [np.asarray(points, dtype=np.int32)], False, color, thickness, cv2.LINE_AA)
+        return
+    for index in range(len(points) - 1):
+        if index % 2 == 1:
+            continue
+        cv2.line(canvas, points[index], points[index + 1], color, thickness, cv2.LINE_AA)
+
+
+def _save_stacked_series_figure(
+    path: Path,
+    *,
+    title: str,
+    subplots: list[dict[str, Any]],
+    footer: str,
+) -> None:
+    if not subplots:
+        _save_text_figure(path, title=title, lines=["No subplot definitions were provided."])
+        return
+
+    subplot_height = 210
+    canvas_height = 78 + subplot_height * len(subplots) + 54
+    canvas_width = 1280
+    canvas = np.full((canvas_height, canvas_width, 3), 252, dtype=np.uint8)
+    cv2.putText(canvas, title, (24, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.92, (22, 26, 32), 2, cv2.LINE_AA)
+    cv2.putText(canvas, footer, (24, canvas_height - 18), cv2.FONT_HERSHEY_SIMPLEX, 0.56, (82, 90, 98), 1, cv2.LINE_AA)
+
+    for subplot_index, subplot in enumerate(subplots):
+        top = 58 + subplot_index * subplot_height
+        left = 88
+        right = 26
+        bottom = 44
+        plot_height = subplot_height - bottom - 18
+        plot_width = canvas_width - left - right
+        origin_x = left
+        origin_y = top + plot_height
+        cv2.rectangle(canvas, (origin_x, top), (origin_x + plot_width, origin_y), (226, 230, 236), 1, cv2.LINE_AA)
+        cv2.putText(
+            canvas,
+            str(subplot.get("title", f"subplot {subplot_index + 1}")),
+            (origin_x, top - 8),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.64,
+            (22, 26, 32),
+            1,
+            cv2.LINE_AA,
+        )
+        cv2.line(canvas, (origin_x, top), (origin_x, origin_y), (160, 166, 172), 1, cv2.LINE_AA)
+        cv2.line(canvas, (origin_x, origin_y), (origin_x + plot_width, origin_y), (160, 166, 172), 1, cv2.LINE_AA)
+
+        series = list(subplot.get("series", []))
+        finite_x: list[float] = []
+        finite_y: list[float] = []
+        for item in series:
+            xs = np.asarray(item.get("x_values", []), dtype=np.float64)
+            ys = np.asarray(item.get("y_values", []), dtype=np.float64)
+            if xs.size == 0 or ys.size == 0 or xs.size != ys.size:
+                continue
+            finite = np.isfinite(xs) & np.isfinite(ys)
+            if not np.any(finite):
+                continue
+            finite_x.extend(xs[finite].tolist())
+            finite_y.extend(ys[finite].tolist())
+        if not finite_x or not finite_y:
+            cv2.putText(
+                canvas,
+                "No finite samples available.",
+                (origin_x + 12, top + 36),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.58,
+                (96, 100, 106),
+                1,
+                cv2.LINE_AA,
+            )
+            continue
+
+        min_x, max_x = float(min(finite_x)), float(max(finite_x))
+        min_y, max_y = float(min(finite_y)), float(max(finite_y))
+        if abs(max_x - min_x) < 1e-12:
+            max_x = min_x + 1.0
+        if abs(max_y - min_y) < 1e-12:
+            max_y = min_y + 1.0
+
+        def project(x_value: float, y_value: float) -> tuple[int, int]:
+            x_px = origin_x + int(round((x_value - min_x) / (max_x - min_x) * plot_width))
+            y_px = origin_y - int(round((y_value - min_y) / (max_y - min_y) * plot_height))
+            return x_px, y_px
+
+        legend_x = origin_x + 8
+        legend_y = top + 18
+        for item in series:
+            xs = np.asarray(item.get("x_values", []), dtype=np.float64)
+            ys = np.asarray(item.get("y_values", []), dtype=np.float64)
+            if xs.size == 0 or ys.size == 0 or xs.size != ys.size:
+                continue
+            finite = np.isfinite(xs) & np.isfinite(ys)
+            if not np.any(finite):
+                continue
+            points = [project(float(x_value), float(y_value)) for x_value, y_value in zip(xs[finite], ys[finite])]
+            color = tuple(int(value) for value in item.get("color_bgr", (53, 102, 188)))
+            dashed = bool(item.get("dashed", False))
+            _draw_polyline(canvas, points, color=color, thickness=2, dashed=dashed)
+            cv2.line(canvas, (legend_x, legend_y), (legend_x + 18, legend_y), color, 2, cv2.LINE_AA)
+            cv2.putText(
+                canvas,
+                str(item.get("label", "series")),
+                (legend_x + 24, legend_y + 4),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.44,
+                (48, 52, 58),
+                1,
+                cv2.LINE_AA,
+            )
+            legend_x += 160
+            if legend_x > canvas_width - 200:
+                legend_x = origin_x + 8
+                legend_y += 18
+
+        cv2.putText(
+            canvas,
+            str(subplot.get("y_label", "")),
+            (18, top + 22),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.48,
+            (96, 100, 106),
+            1,
+            cv2.LINE_AA,
+        )
+    cv2.imwrite(str(path), canvas)
+
+
+def _rotation_matrix_from_rvec(value: Any) -> np.ndarray | None:
+    rvec = _vector_or_none(value)
+    if rvec is None:
+        return None
+    rotation, _ = cv2.Rodrigues(rvec.reshape(3, 1))
+    return np.asarray(rotation, dtype=np.float64).reshape(3, 3)
+
+
+def _rotation_matrix_or_none(value: Any) -> np.ndarray | None:
+    if value in ("", None):
+        return None
+    array = np.asarray(value, dtype=np.float64)
+    if array.shape != (3, 3):
+        return None
+    return array
+
+
+def _load_tag_truth_lookup(path: Path) -> dict[int, dict[str, np.ndarray]]:
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    lookup: dict[int, dict[str, np.ndarray]] = {}
+    for row in payload.get("tags", []):
+        if not isinstance(row, dict):
+            continue
+        tag_id = row.get("tag_id")
+        position = _vector_or_none(row.get("position_world_m"))
+        rotation = _rotation_matrix_or_none(row.get("rotation_wt"))
+        if tag_id is None or position is None:
+            continue
+        lookup[int(tag_id)] = {
+            "position_world_m": position,
+            "rotation_wt": rotation if rotation is not None else np.eye(3, dtype=np.float64),
+        }
+    return lookup
+
+
+def _camera_frame_records(run_dir: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for row in _read_jsonl_rows(run_dir / "raw" / "camera_frames.jsonl"):
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        rgb_path = row.get("rgb_path")
+        if timestamp is None or not isinstance(rgb_path, str) or not rgb_path:
+            continue
+        records.append(
+            {
+                "timestamp_s": float(timestamp),
+                "frame_index": int(row.get("frame_index", len(records))),
+                "image_path": run_dir / rgb_path,
+            }
+        )
+    return records
+
+
+def _nearest_record_index(times: np.ndarray, target_time_s: float) -> int | None:
+    if times.size == 0 or not np.isfinite(target_time_s):
+        return None
+    return int(np.argmin(np.abs(times - float(target_time_s))))
+
+
+def _load_image(path: Path) -> np.ndarray | None:
+    if not path.exists():
+        return None
+    return cv2.imread(str(path))
+
+
+def _save_image_grid_montage(
+    path: Path,
+    *,
+    title: str,
+    labeled_images: list[tuple[str, np.ndarray]],
+) -> None:
+    valid = [(label, image) for label, image in labeled_images if image is not None]
+    if not valid:
+        _save_text_figure(path, title=title, lines=["No RGB frames were available for this montage."])
+        return
+    columns = min(3, len(valid))
+    rows = (len(valid) + columns - 1) // columns
+    tile_width = 360
+    tile_height = 220
+    canvas = np.full((80 + rows * (tile_height + 52), 24 + columns * (tile_width + 18), 3), 248, dtype=np.uint8)
+    cv2.putText(canvas, title, (24, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (22, 26, 32), 2, cv2.LINE_AA)
+    for index, (label, image) in enumerate(valid):
+        row = index // columns
+        column = index % columns
+        x0 = 20 + column * (tile_width + 18)
+        y0 = 56 + row * (tile_height + 52)
+        resized = cv2.resize(image, (tile_width, tile_height), interpolation=cv2.INTER_LINEAR)
+        canvas[y0 : y0 + tile_height, x0 : x0 + tile_width] = resized
+        cv2.rectangle(canvas, (x0, y0), (x0 + tile_width, y0 + tile_height), (210, 214, 220), 1, cv2.LINE_AA)
+        cv2.putText(canvas, label, (x0, y0 + tile_height + 26), cv2.FONT_HERSHEY_SIMPLEX, 0.56, (48, 52, 58), 1, cv2.LINE_AA)
+    cv2.imwrite(str(path), canvas)
+
+
+def _save_sim_stills(
+    run_dir: Path,
+    *,
+    output_first_frame_path: Path,
+    output_waypoint_montage_path: Path,
+    controller_rows: list[dict[str, str]],
+    waypoint_count: int,
+) -> None:
+    frame_records = _camera_frame_records(run_dir)
+    if not frame_records:
+        _save_text_figure(output_first_frame_path, title="Representative Simulation First Frame", lines=["No RGB frames were logged for this run."])
+        _save_text_figure(output_waypoint_montage_path, title="Simulation Waypoint Arrivals", lines=["No RGB frames were logged for this run."])
+        return
+
+    first_frame = _load_image(Path(frame_records[0]["image_path"]))
+    if first_frame is None:
+        _save_text_figure(output_first_frame_path, title="Representative Simulation First Frame", lines=["The first RGB frame could not be decoded."])
+    else:
+        cv2.imwrite(str(output_first_frame_path), first_frame)
+
+    controller_times: list[float] = []
+    arrival_labels: list[str] = []
+    previous_index: int | None = None
+    for row in controller_rows:
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        raw_index = row.get("waypoint_index")
+        if timestamp is None or raw_index in ("", None):
+            continue
+        waypoint_index = int(raw_index)
+        if previous_index is None:
+            previous_index = waypoint_index
+            continue
+        if waypoint_index <= previous_index:
+            continue
+        for completed_index in range(previous_index + 1, min(waypoint_index, waypoint_count) + 1):
+            controller_times.append(float(timestamp))
+            arrival_labels.append(f"reach point {completed_index}")
+        previous_index = waypoint_index
+
+    frame_times = np.asarray([float(row["timestamp_s"]) for row in frame_records], dtype=np.float64)
+    labeled_images: list[tuple[str, np.ndarray]] = []
+    if first_frame is not None:
+        labeled_images.append(("first frame", first_frame))
+    for label, timestamp in zip(arrival_labels, controller_times):
+        index = _nearest_record_index(frame_times, timestamp)
+        if index is None:
+            continue
+        image = _load_image(Path(frame_records[index]["image_path"]))
+        if image is not None:
+            labeled_images.append((label, image))
+    _save_image_grid_montage(output_waypoint_montage_path, title="Simulation Frames Along The Anchored Path", labeled_images=labeled_images)
+
+
+def _save_position_estimation_figure(
+    path: Path,
+    *,
+    filter_rows: list[dict[str, Any]],
+    camera_gt_rows: list[dict[str, str]],
+) -> None:
+    gt_samples: list[tuple[float, np.ndarray]] = []
+    for row in camera_gt_rows:
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        position = _position_from_gt_row(row)
+        if timestamp is not None and position is not None:
+            gt_samples.append((float(timestamp), position))
+    filter_samples: list[tuple[float, np.ndarray]] = []
+    for row in filter_rows:
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        position = _vector_or_none(row.get("position_world_m"))
+        if timestamp is not None and position is not None:
+            filter_samples.append((float(timestamp), position))
+    if not gt_samples or not filter_samples:
+        _save_text_figure(path, title="Position Estimation Timeline", lines=["Filter states and camera ground truth are both required for this figure."])
+        return
+
+    gt_times = np.asarray([item[0] for item in gt_samples], dtype=np.float64)
+    times = [item[0] for item in filter_samples]
+    estimate_components = {
+        "x": [float(item[1][0]) for item in filter_samples],
+        "y": [float(item[1][1]) for item in filter_samples],
+        "z": [float(item[1][2]) for item in filter_samples],
+    }
+    gt_components = {"x": [], "y": [], "z": []}
+    for timestamp in times:
+        index = _nearest_record_index(gt_times, timestamp)
+        if index is None:
+            gt_components["x"].append(float("nan"))
+            gt_components["y"].append(float("nan"))
+            gt_components["z"].append(float("nan"))
+            continue
+        position = gt_samples[index][1]
+        gt_components["x"].append(float(position[0]))
+        gt_components["y"].append(float(position[1]))
+        gt_components["z"].append(float(position[2]))
+    colors = {
+        "estimate": (53, 102, 188),
+        "ground_truth": (188, 92, 60),
+    }
+    _save_stacked_series_figure(
+        path,
+        title="Camera Position Estimation In Time",
+        subplots=[
+            {
+                "title": "world x",
+                "y_label": "m",
+                "series": [
+                    {"label": "estimate", "x_values": times, "y_values": estimate_components["x"], "color_bgr": colors["estimate"]},
+                    {
+                        "label": "ground truth",
+                        "x_values": times,
+                        "y_values": gt_components["x"],
+                        "color_bgr": colors["ground_truth"],
+                        "dashed": True,
+                    },
+                ],
+            },
+            {
+                "title": "world y",
+                "y_label": "m",
+                "series": [
+                    {"label": "estimate", "x_values": times, "y_values": estimate_components["y"], "color_bgr": colors["estimate"]},
+                    {
+                        "label": "ground truth",
+                        "x_values": times,
+                        "y_values": gt_components["y"],
+                        "color_bgr": colors["ground_truth"],
+                        "dashed": True,
+                    },
+                ],
+            },
+            {
+                "title": "world z",
+                "y_label": "m",
+                "series": [
+                    {"label": "estimate", "x_values": times, "y_values": estimate_components["z"], "color_bgr": colors["estimate"]},
+                    {
+                        "label": "ground truth",
+                        "x_values": times,
+                        "y_values": gt_components["z"],
+                        "color_bgr": colors["ground_truth"],
+                        "dashed": True,
+                    },
+                ],
+            },
+        ],
+        footer="Estimated and ground-truth camera position components in the anchored world frame.",
+    )
+
+
+def _save_imu_measurements_figure(path: Path, *, imu_rows: list[dict[str, str]]) -> None:
+    times: list[float] = []
+    gyro_components = {"wx": [], "wy": [], "wz": []}
+    accel_components = {"ax": [], "ay": [], "az": []}
+    for row in imu_rows:
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        if timestamp is None:
+            continue
+        gyro = [_float_or_none(row.get(key)) for key in ("wx", "wy", "wz")]
+        accel = [_float_or_none(row.get(key)) for key in ("ax", "ay", "az")]
+        if any(value is None for value in gyro + accel):
+            continue
+        times.append(float(timestamp))
+        for key, value in zip(("wx", "wy", "wz"), gyro):
+            gyro_components[key].append(float(value))
+        for key, value in zip(("ax", "ay", "az"), accel):
+            accel_components[key].append(float(value))
+    if not times:
+        _save_text_figure(path, title="Measured IMU Signals", lines=["No IMU packet stream was available for this figure."])
+        return
+    _save_stacked_series_figure(
+        path,
+        title="Measured IMU Signals",
+        subplots=[
+            {
+                "title": "angular velocity",
+                "y_label": "rad/s",
+                "series": [
+                    {"label": "wx", "x_values": times, "y_values": gyro_components["wx"], "color_bgr": (53, 102, 188)},
+                    {"label": "wy", "x_values": times, "y_values": gyro_components["wy"], "color_bgr": (92, 176, 101)},
+                    {"label": "wz", "x_values": times, "y_values": gyro_components["wz"], "color_bgr": (188, 92, 60)},
+                ],
+            },
+            {
+                "title": "specific force",
+                "y_label": "m/s^2",
+                "series": [
+                    {"label": "ax", "x_values": times, "y_values": accel_components["ax"], "color_bgr": (53, 102, 188)},
+                    {"label": "ay", "x_values": times, "y_values": accel_components["ay"], "color_bgr": (92, 176, 101)},
+                    {"label": "az", "x_values": times, "y_values": accel_components["az"], "color_bgr": (188, 92, 60)},
+                ],
+            },
+        ],
+        footer="Raw measured IMU packets logged by the Isaac runtime.",
+    )
+
+
+def _save_pattern_world_positions_figure(
+    path: Path,
+    *,
+    filter_rows: list[dict[str, Any]],
+    detection_rows: list[dict[str, Any]],
+    tag_truth_lookup: dict[int, dict[str, np.ndarray]],
+) -> None:
+    filter_samples: list[tuple[float, np.ndarray, np.ndarray]] = []
+    for row in filter_rows:
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        position = _vector_or_none(row.get("position_world_m"))
+        rotation = _rotation_matrix_or_none(row.get("rotation_wi"))
+        if timestamp is None or position is None or rotation is None:
+            continue
+        filter_samples.append((float(timestamp), position, rotation))
+    if not filter_samples or not detection_rows or not tag_truth_lookup:
+        _save_text_figure(path, title="Calibration Pattern World Positions", lines=["Filter poses, detections, and tag ground truth are required for this figure."])
+        return
+
+    filter_times = np.asarray([item[0] for item in filter_samples], dtype=np.float64)
+    by_tag: dict[int, dict[str, list[float]]] = {}
+    for row in detection_rows:
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        tag_id = row.get("tag_id")
+        translation_ct = _vector_or_none(row.get("pose_camera_tvec_m"))
+        if timestamp is None or tag_id in ("", None) or translation_ct is None:
+            continue
+        tag_id_int = int(tag_id)
+        if tag_id_int not in tag_truth_lookup:
+            continue
+        index = _nearest_record_index(filter_times, float(timestamp))
+        if index is None:
+            continue
+        camera_position_world, rotation_wc = filter_samples[index][1], filter_samples[index][2]
+        tag_position_world = camera_position_world + rotation_wc @ translation_ct
+        bucket = by_tag.setdefault(
+            tag_id_int,
+            {
+                "times": [],
+                "x": [],
+                "y": [],
+                "z": [],
+            },
+        )
+        bucket["times"].append(float(timestamp))
+        bucket["x"].append(float(tag_position_world[0]))
+        bucket["y"].append(float(tag_position_world[1]))
+        bucket["z"].append(float(tag_position_world[2]))
+    if not by_tag:
+        _save_text_figure(path, title="Calibration Pattern World Positions", lines=["No pose-ready detections were available for the calibration patterns."])
+        return
+
+    subplots: list[dict[str, Any]] = []
+    component_colors = {"x": (53, 102, 188), "y": (92, 176, 101), "z": (188, 92, 60)}
+    reference_colors = {"x": (132, 164, 220), "y": (150, 204, 156), "z": (220, 156, 132)}
+    for tag_id in sorted(by_tag):
+        gt_position = tag_truth_lookup[tag_id]["position_world_m"]
+        bucket = by_tag[tag_id]
+        subplots.append(
+            {
+                "title": f"tag {tag_id} estimated world position",
+                "y_label": "m",
+                "series": [
+                    {"label": "x estimate", "x_values": bucket["times"], "y_values": bucket["x"], "color_bgr": component_colors["x"]},
+                    {"label": "y estimate", "x_values": bucket["times"], "y_values": bucket["y"], "color_bgr": component_colors["y"]},
+                    {"label": "z estimate", "x_values": bucket["times"], "y_values": bucket["z"], "color_bgr": component_colors["z"]},
+                    {
+                        "label": "x gt",
+                        "x_values": bucket["times"],
+                        "y_values": [float(gt_position[0])] * len(bucket["times"]),
+                        "color_bgr": reference_colors["x"],
+                        "dashed": True,
+                    },
+                    {
+                        "label": "y gt",
+                        "x_values": bucket["times"],
+                        "y_values": [float(gt_position[1])] * len(bucket["times"]),
+                        "color_bgr": reference_colors["y"],
+                        "dashed": True,
+                    },
+                    {
+                        "label": "z gt",
+                        "x_values": bucket["times"],
+                        "y_values": [float(gt_position[2])] * len(bucket["times"]),
+                        "color_bgr": reference_colors["z"],
+                        "dashed": True,
+                    },
+                ],
+            }
+        )
+    _save_stacked_series_figure(
+        path,
+        title="Calibration Pattern Position Estimates In Time",
+        subplots=subplots,
+        footer="Each subplot shows the world-position estimate recovered for one tag from detections and the camera state estimate.",
+    )
+
+
+def _save_pattern_relative_camera_figure(path: Path, *, detection_rows: list[dict[str, Any]]) -> None:
+    by_tag: dict[int, dict[str, list[float]]] = {}
+    for row in detection_rows:
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        tag_id = row.get("tag_id")
+        rotation_ct = _rotation_matrix_from_rvec(row.get("pose_camera_rvec"))
+        translation_ct = _vector_or_none(row.get("pose_camera_tvec_m"))
+        if timestamp is None or tag_id in ("", None) or rotation_ct is None or translation_ct is None:
+            continue
+        camera_position_tag = -rotation_ct.T @ translation_ct
+        bucket = by_tag.setdefault(
+            int(tag_id),
+            {
+                "times": [],
+                "x": [],
+                "y": [],
+                "z": [],
+            },
+        )
+        bucket["times"].append(float(timestamp))
+        bucket["x"].append(float(camera_position_tag[0]))
+        bucket["y"].append(float(camera_position_tag[1]))
+        bucket["z"].append(float(camera_position_tag[2]))
+    if not by_tag:
+        _save_text_figure(path, title="Relative Camera Position To Each Pattern", lines=["Pose-ready detections are required for this figure."])
+        return
+    subplots = [
+        {
+            "title": f"tag {tag_id} camera position in tag frame",
+            "y_label": "m",
+            "series": [
+                {"label": "x", "x_values": bucket["times"], "y_values": bucket["x"], "color_bgr": (53, 102, 188)},
+                {"label": "y", "x_values": bucket["times"], "y_values": bucket["y"], "color_bgr": (92, 176, 101)},
+                {"label": "z", "x_values": bucket["times"], "y_values": bucket["z"], "color_bgr": (188, 92, 60)},
+            ],
+        }
+        for tag_id, bucket in sorted(by_tag.items())
+    ]
+    _save_stacked_series_figure(
+        path,
+        title="Relative Camera Position To Each Calibration Pattern",
+        subplots=subplots,
+        footer="Per-tag camera position recovered from solvePnP tag detections, expressed in each tag frame.",
+    )
+
+
 def _read_csv_rows(path: Path) -> list[dict[str, str]]:
     if not path.exists():
         return []
@@ -242,9 +817,13 @@ def write_isaac_report_figures(run_dir: str | Path, metrics: dict[str, Any]) -> 
 
     filter_rows = _read_jsonl_rows(resolved / "estimates" / "filter_state.jsonl")
     uncertainty_rows = _read_jsonl_rows(resolved / "estimates" / "uncertainty.jsonl")
+    detection_rows = _read_jsonl_rows(resolved / "raw" / "detections.jsonl")
     command_rows = _read_csv_rows(resolved / "raw" / "commands.csv")
+    controller_rows = _read_csv_rows(resolved / "raw" / "controller_diagnostics.csv")
+    imu_rows = _read_csv_rows(resolved / "raw" / "imu.csv")
     realized_rows = _read_csv_rows(resolved / "raw" / "realized_joints.csv")
     camera_gt_rows = _read_csv_rows(resolved / "gt" / "camera_gt.csv")
+    tag_truth_lookup = _load_tag_truth_lookup(resolved / "gt" / "tag_gt.json")
 
     metrics_figure = analysis_dir / "isaac_metrics_summary.png"
     uncertainty_figure = analysis_dir / "isaac_uncertainty_timeline.png"
@@ -291,6 +870,12 @@ def write_isaac_report_figures(run_dir: str | Path, metrics: dict[str, Any]) -> 
     timing_path = report_data_dir / "timing_timeline.png"
     trajectory_path = report_data_dir / "trajectory_path.png"
     tracking_path = report_data_dir / "path_tracking.png"
+    first_frame_path = report_data_dir / "sim_first_frame.png"
+    waypoint_stills_path = report_data_dir / "sim_waypoint_arrivals.png"
+    position_estimation_path = report_data_dir / "position_estimation_timeline.png"
+    pattern_world_positions_path = report_data_dir / "pattern_world_positions_timeline.png"
+    imu_measurements_path = report_data_dir / "imu_measurements_timeline.png"
+    pattern_relative_camera_path = report_data_dir / "pattern_relative_camera_positions_timeline.png"
     convergence_path = report_data_dir / "smoother_convergence.png"
     residual_histogram_path = report_data_dir / "residual_histogram.png"
     calibration_path = report_data_dir / "uncertainty_calibration.png"
@@ -331,6 +916,32 @@ def write_isaac_report_figures(run_dir: str | Path, metrics: dict[str, Any]) -> 
         tracks=[(trajectory_x, trajectory_y, (31, 160, 92))],
         point_sets=[(waypoint_points, (188, 92, 60))],
         footer=f"completion fraction: {metrics['control']['completion_fraction']}",
+    )
+    _save_sim_stills(
+        resolved,
+        output_first_frame_path=first_frame_path,
+        output_waypoint_montage_path=waypoint_stills_path,
+        controller_rows=controller_rows,
+        waypoint_count=len(waypoint_points),
+    )
+    _save_position_estimation_figure(
+        position_estimation_path,
+        filter_rows=filter_rows,
+        camera_gt_rows=camera_gt_rows,
+    )
+    _save_pattern_world_positions_figure(
+        pattern_world_positions_path,
+        filter_rows=filter_rows,
+        detection_rows=detection_rows,
+        tag_truth_lookup=tag_truth_lookup,
+    )
+    _save_imu_measurements_figure(
+        imu_measurements_path,
+        imu_rows=imu_rows,
+    )
+    _save_pattern_relative_camera_figure(
+        pattern_relative_camera_path,
+        detection_rows=detection_rows,
     )
     _save_line_plot(
         convergence_path,
@@ -395,6 +1006,12 @@ def write_isaac_report_figures(run_dir: str | Path, metrics: dict[str, Any]) -> 
         "timing_timeline": str(timing_path),
         "trajectory_path": str(trajectory_path),
         "path_tracking": str(tracking_path),
+        "sim_first_frame": str(first_frame_path),
+        "sim_waypoint_arrivals": str(waypoint_stills_path),
+        "position_estimation_timeline": str(position_estimation_path),
+        "pattern_world_positions_timeline": str(pattern_world_positions_path),
+        "imu_measurements_timeline": str(imu_measurements_path),
+        "pattern_relative_camera_positions_timeline": str(pattern_relative_camera_path),
         "smoother_convergence": str(convergence_path),
         "residual_histogram": str(residual_histogram_path),
         "uncertainty_calibration": str(calibration_path),

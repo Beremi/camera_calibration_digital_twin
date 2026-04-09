@@ -7,10 +7,17 @@ failure.
 ## Current State
 
 - branch: `feature/isaac-estimator-second-pass`
+- review-bundle packet head: `6ec3cec`
 - publication packet head: `6ef8807`
+- science rerun packet head: `a1b0d4f`
 - preserved pre-draft checkpoint: `b3f23c9`
 - frozen first-pass baseline: `output/isaac_runs/latest_first_pass_suite`
 - refreshed second-pass suite: `output/isaac_runs/latest_second_pass_suite`
+
+The commit labels are intentional rather than contradictory: the science rerun
+that refreshed the 18-run suite landed at `a1b0d4f`, the publication/media
+closure packet that turned that suite into a draft package landed at `6ef8807`,
+and the current repo-consistency/review-bundle packet on top is `6ec3cec`.
 
 ## Locked Fused Configuration
 
@@ -65,6 +72,8 @@ current waypoint and intermittent-anchor error metrics.
   - `output/isaac_runs/latest_second_pass_suite/analysis/suite_summary.json`
 - dashboard:
   - `output/isaac_runs/latest_second_pass_suite/presentation/index.html`
+- repo-relative review manifest:
+  - `docs/second_pass_review_manifest.json`
 - lock:
   - `docs/second_pass_draft_lock.json`
 

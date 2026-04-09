@@ -2,8 +2,8 @@
 
 ## Current Work Packet
 
-- current packet head: `6ef8807`
-- previous packet head: `a1b0d4f`
+- current packet head: `6ec3cec`
+- previous packet head: `6ef8807`
 - working baseline commit SHA: `334e5a2`
 - preserved pre-draft checkpoint: `b3f23c9`
 - current milestone: `first usable second-pass draft package ready for review`
@@ -108,179 +108,59 @@ It is preserved in:
 That checkpoint captures the six-run seed-007 isolation bundle that identified
 the current branch-level root cause as a fused mechanization or weighting issue.
 
-## Scope
+## Current Review Package
 
-The active question on `feature/isaac-estimator-second-pass` is:
+The current review bundle is intentionally small and repo-centered:
 
-- why anchored closed-loop control remains stable while residual quality,
-  auxiliary-tag map quality, and covariance calibration are poor
+- quickstart:
+  - `docs/isaac_second_pass_handoff.md`
+- current findings:
+  - `docs/isaac_second_pass_key_findings.md`
+- figure/video guidance:
+  - `docs/isaac_second_pass_figure_notes.md`
+- review manifest:
+  - `docs/second_pass_review_manifest.json`
+- draft lock:
+  - `docs/second_pass_draft_lock.json`
+- manuscript source:
+  - `report_tex/second_pass_publication_draft.tex`
+- built manuscript:
+  - `report_tex/second_pass_publication_draft.pdf`
+- dashboard:
+  - `output/isaac_runs/latest_second_pass_suite/presentation/index.html`
 
-The branch intentionally does not add:
+## Review Bundle Regeneration
 
-- new scenes
-- new robot presets
-- raw-log replay re-solving
-- broad stress campaigns
-
-## New Tools
-
-- `scripts/analyze_isaac_estimator_quality.py`
-  - writes:
-    - `analysis/estimator_quality.json`
-    - `analysis/estimator_quality.csv`
-    - `analysis/tag_update_breakdown.csv`
-    - `analysis/anchor_vs_aux_residuals.png`
-    - `analysis/smoother_correction_timeline.png`
-- `scripts/run_isaac_anchor_vio.py`
-  - now supports second-pass isolation switches:
-    - `--[no-]use-aux-tags-in-filter`
-    - `--[no-]use-aux-tags-in-smoother`
-    - `--[no-]use-aux-map-for-control`
-    - `--vision-covariance-scale`
-    - `--imu-process-covariance-scale`
-    - `--post-relocalization-covariance-scale`
-
-## Canonical Diagnostic Command
-
-Run the analyzer on the frozen canonical run:
+Use the wrapper below to rebuild the current review package from the promoted
+second-pass draft lock:
 
 ```bash
 source .venv/bin/activate
-python scripts/analyze_isaac_estimator_quality.py \
-  output/isaac_runs/first_pass_fused_closed-loop_servo_nominal_seed_007
+python scripts/build_isaac_second_pass_review_bundle.py
 ```
 
-## Isolation Matrix
+This regenerates:
 
-The intended second-pass isolation matrix on seed `007` is:
+- the second-pass publication build
+- the local media bundle
+- the static dashboard
+- the repo-relative review manifest
 
-1. `visual / closed-loop / anchor-only`
-2. `fused / closed-loop / anchor-only`
-3. `visual / closed-loop / anchor+aux`
-4. `fused / closed-loop / anchor+aux`
+## Artifact Policy
 
-Use the new switches so anchor-only means:
+The canonical second-pass review outputs live under
+`output/isaac_runs/latest_second_pass_suite`, but those large generated
+artifacts remain local. The repo-level sources of truth are therefore:
 
-- `use_aux_tags_in_filter = false`
-- `use_aux_tags_in_smoother = false`
-- `use_aux_map_for_control = false`
+- the draft lock
+- the review manifest
+- the execution log
+- the manuscript source
 
-Build the six-run isolation bundle with:
+## Historical Packet Archive
 
-```bash
-source .venv/bin/activate
-python scripts/build_isaac_second_pass_isolation_bundle.py
-```
+Historical packet-by-packet notes, including the isolation bundle, dropout
+debug packets, suppression-propagation repair, and publication-closure
+timeline, now live in:
 
-This writes:
-
-- `output/isaac_runs/latest_second_pass_isolation/summary.csv`
-- `output/isaac_runs/latest_second_pass_isolation/summary.json`
-- `docs/isaac_second_pass_isolation_summary.md`
-
-## Current Status
-
-The seed-`007` isolation bundle has now been executed on real 8-second Isaac
-runs. The current automatic classification is:
-
-- `fused_mechanization_or_weighting_bug`
-
-The evidence for that call is simple:
-
-- anchor-only visual is already numerically sane
-- anchor-only fused is still more than 10% worse than anchor-only visual on
-  mean position error
-- aux-enabled runs stay well behaved rather than exploding
-- reprojection metrics are now sane rather than the absurd first-pass values
-
-Representative bundle numbers from
-`output/isaac_runs/latest_second_pass_isolation/summary.json`:
-
-- `visual / anchor-only`: position error `0.0166 m`, waypoint error `0.0202 m`,
-  coverage `99.59%`, NEES `8.67`
-- `fused / anchor-only`: position error `0.0190 m`, waypoint error `0.0228 m`,
-  coverage `97.94%`, NEES `9.48`
-- `visual / aux-for-control`: aux map error `0.0256 m`
-- `fused / aux-for-control`: aux map error `0.0269 m`
-
-That means the aux-tag path is no longer the first suspect on this branch.
-The next estimator change should focus on fused process/measurement weighting
-before broadening the campaign.
-
-## Current Tuning Note
-
-A small fused-only sweep on the same canonical seed-`007` setup already shows
-that increasing `imu_process_covariance_scale` is a useful next-step lever.
-
-Observed follow-up runs:
-
-- `second_pass_fused_anchor_only_seed_007_imu_scale_2`
-  - position error `0.01624 m`
-  - coverage `98.54%`
-  - NEES `5.70`
-- `second_pass_fused_anchor_only_seed_007_imu_scale_4`
-  - position error `0.01621 m`
-  - coverage `98.75%`
-  - NEES `5.58`
-- `second_pass_fused_aux_control_seed_007_imu_scale_4`
-  - position error `0.01632 m`
-  - aux map error `0.0240 m`
-  - coverage `98.54%`
-  - NEES `5.62`
-
-This sweep materially improves fused state accuracy and calibration, but it
-does not yet close the full waypoint-error gap to visual closed-loop. That is
-the current boundary before a broader second-pass science suite.
-
-## Current Diagnostic Focus
-
-The new runtime/reporting path now separates:
-
-- anchor vs auxiliary reprojection quality
-- native PnP vs fallback detections
-- residuals before vs after anchor relocalization
-- accepted vs rejected auxiliary-tag updates
-- smoother feedback correction norms
-
-That bundle is the required evidence base before changing the online filter or
-replacing the smoother core.
-
-## First-Draft Closure Path
-
-The next closure target on this branch is the minimum second-pass publication
-draft, not a broad benchmark campaign. The intended draft bundle is:
-
-- one locked fused nominal configuration selected by
-  `scripts/run_isaac_second_pass_tuning.py`
-- one 18-run suite executed by `scripts/run_isaac_second_pass_draft_suite.py`
-- one separate second-pass artifact bundle under
-  `output/isaac_runs/latest_second_pass_suite/analysis/`
-- one separate draft paper compiled from
-  `report_tex/second_pass_publication_draft.tex`
-- one local-only presentation bundle under
-  `output/isaac_runs/latest_second_pass_suite/presentation/`
-
-## Current Draft-Lock Note
-
-The current real draft lock now points to the promoted fused nominal
-configuration selected after the suppression-propagation repair and focused
-retune:
-
-- backend: `lightweight`
-- reference run:
-  `second_pass_tuning_anchor_only_lightweight_seed_007_imu_8p0_vision_2p0_post_2p0_gyro_default_accel_default_supp_gyro_only_gate_10p0_covinfl_8p0`
-- runtime switches:
-  - `use_aux_tags_in_filter = false`
-  - `use_aux_tags_in_smoother = false`
-  - `use_aux_map_for_control = false`
-- filter overrides:
-  - `suppression_propagation_mode = gyro_only`
-  - `suppression_imu_specific_force_gate_mps2 = 10.0`
-  - `dropout_post_reacquisition_covariance_scale = 8.0`
-
-That lock is no longer just a diagnostic candidate. It has already been used to
-rerun the full 18-run suite, and the refreshed suite artifacts are the current
-source of truth for this branch. The remaining work is therefore not another
-dropout repair packet. It is publication closure: regenerate the second-pass
-PDF, figures, and media bundle from the rerun suite, then tighten the written
-claims to the narrower stabilization result the data actually support.
+- `docs/isaac_second_pass_packet_history.md`

@@ -1,5 +1,31 @@
 # Camera Calibration Digital Twin
 
+## Current Second-Pass Draft Package
+
+The current reviewable package on `feature/isaac-estimator-second-pass` is the
+second-pass Isaac draft bundle, not the older April 8 first-pass-only state.
+Start here:
+
+- [docs/isaac_second_pass_handoff.md](docs/isaac_second_pass_handoff.md)
+- [docs/isaac_second_pass_key_findings.md](docs/isaac_second_pass_key_findings.md)
+- [docs/isaac_second_pass_figure_notes.md](docs/isaac_second_pass_figure_notes.md)
+- [docs/second_pass_draft_lock.json](docs/second_pass_draft_lock.json)
+- [docs/second_pass_review_manifest.json](docs/second_pass_review_manifest.json)
+- [report_tex/second_pass_publication_draft.tex](report_tex/second_pass_publication_draft.tex)
+
+Artifact policy:
+
+- large second-pass outputs under `output/isaac_runs/` remain generated local artifacts
+- the canonical regeneration path is:
+
+```bash
+source .venv/bin/activate
+python scripts/build_isaac_second_pass_review_bundle.py
+```
+
+That wrapper rebuilds the second-pass PDF, media bundle, dashboard, and the
+repo-relative review manifest from the current draft lock.
+
 This repository is now in a hybrid state:
 
 - the preserved browser-based checkpoints remain the regression baseline and historical path

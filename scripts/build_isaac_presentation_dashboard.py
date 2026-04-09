@@ -34,6 +34,12 @@ def build_dashboard(output_root: Path) -> Path:
         "anchor_vs_aux_residuals_dropout.png",
         "smoother_feedback_compare.png",
         "tuning_heatmap_fused.png",
+        "representative_nominal_first_frame.png",
+        "representative_nominal_sim_waypoints.png",
+        "representative_nominal_position_estimation.png",
+        "representative_nominal_pattern_world_positions.png",
+        "representative_nominal_imu_measurements.png",
+        "representative_nominal_pattern_relative_camera_positions.png",
     ]
     videos = dict(presentation_manifest.get("videos", {}))
     captions = dict(presentation_manifest.get("captions", {}))

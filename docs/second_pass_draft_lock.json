@@ -3,8 +3,8 @@
     "canonical_seed": 7,
     "classification": "fused_mechanization_or_weighting_bug",
     "commit": "b3f23c9",
-    "current_work_packet_commit": "6ef8807",
-    "draft_selection_status": "publication_complete_ready_for_review",
+    "current_work_packet_commit": "6ec3cec",
+    "draft_selection_status": "review_bundle_ready",
     "dropout_debug_bundle_dir": "output/isaac_runs/latest_second_pass_dropout_debug",
     "dropout_debug_docs_path": "docs/isaac_second_pass_dropout_debug.md",
     "dropout_debug_root_cause_hint": "propagation_process_problem",
@@ -35,10 +35,10 @@
     ]
   },
   "draft_selection": {
-    "draft_readiness_note": "The validated fused suppression winner has been promoted into the real draft lock, the focused nominal retune and full 18-run suite rerun are complete, and the second-pass publication draft PDF plus local presentation bundle have now been regenerated from the refreshed suite artifacts. This lock is ready for collaborator review and for the next packet's manuscript-polish or science-expansion work.",
+    "draft_readiness_note": "The second-pass review bundle is now ready from the refreshed suite artifacts: the promoted fused draft lock, the rebuilt paper PDF, the regenerated dashboard/media bundle, and the review manifest all point to the same stabilization result.",
     "draft_ready": true,
-    "draft_suite_status": "publication_build_complete_pending_media_refresh",
-    "draft_suite_status_reason": "The second-pass PDF now builds cleanly from the refreshed suite artifacts, but the local media bundle and dashboard still need to be regenerated from the same suite before the draft lock can be marked ready.",
+    "draft_suite_status": "review_bundle_ready",
+    "draft_suite_status_reason": "The refreshed second-pass suite, PDF build, dashboard, and local presentation bundle have all been regenerated from the promoted fused draft lock and are ready for review.",
     "fused_nominal_backend": "lightweight",
     "fused_nominal_covariance_scales": {
       "accel_process_covariance_scale": null,
@@ -88,9 +88,9 @@
       },
       "status": "promoted_into_draft_lock"
     },
-    "presentation_manifest_path": "/home/beremi/repos/camera_calibration_digital_twin/output/isaac_runs/latest_second_pass_suite/presentation/presentation_manifest.json",
-    "publication_build_summary_path": "/home/beremi/repos/camera_calibration_digital_twin/output/isaac_runs/latest_second_pass_suite/analysis/publication_build_summary.json",
-    "publication_pdf_path": "/home/beremi/repos/camera_calibration_digital_twin/report_tex/second_pass_publication_draft.pdf",
+    "presentation_manifest_path": "output/isaac_runs/latest_second_pass_suite/presentation/presentation_manifest.json",
+    "publication_build_summary_path": "output/isaac_runs/latest_second_pass_suite/analysis/publication_build_summary.json",
+    "publication_pdf_path": "report_tex/second_pass_publication_draft.pdf",
     "representative_run_ids": {
       "intermittent_anchor": {
         "fused": "second_pass_draft_fused_intermittent_anchor_seed_011",
@@ -105,6 +105,7 @@
         "visual": "second_pass_draft_visual_servo_stress_seed_007"
       }
     },
+    "review_manifest_path": "docs/second_pass_review_manifest.json",
     "selected_condition_labels": [
       "nominal_full_anchor",
       "intermittent_anchor",
@@ -131,7 +132,7 @@
       "second_pass_draft_fused_servo_stress_seed_011",
       "second_pass_draft_fused_servo_stress_seed_017"
     ],
-    "tuning_summary_path": "/home/beremi/repos/camera_calibration_digital_twin/output/isaac_runs/latest_second_pass_tuning/summary.json",
+    "tuning_summary_path": "output/isaac_runs/latest_second_pass_tuning/summary.json",
     "visual_nominal_reference_run_id": "second_pass_visual_closed_loop_anchor_only_seed_007",
     "visual_runtime_switches": {
       "use_aux_map_for_control": false,

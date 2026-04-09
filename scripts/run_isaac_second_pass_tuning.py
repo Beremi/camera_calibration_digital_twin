@@ -18,6 +18,14 @@ from calib_sim.reporting.isaac_second_pass_suite import second_pass_fused_filter
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _repo_relative(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-root", default="output/isaac_runs")
@@ -593,7 +601,7 @@ def run_tuning(args: argparse.Namespace) -> dict[str, Any]:
         }
         draft_selection["fused_nominal_runtime_switches"] = _phase_runtime_switches(str(selected["phase"]))
         draft_selection["fused_nominal_filter_overrides"] = filter_overrides
-        draft_selection["tuning_summary_path"] = str((tuning_dir / "summary.json").resolve())
+        draft_selection["tuning_summary_path"] = _repo_relative(tuning_dir / "summary.json")
         draft_selection["latest_nominal_recheck_run_id"] = str(selected["run_id"])
         _write_json(lock_path, lock_payload)
 

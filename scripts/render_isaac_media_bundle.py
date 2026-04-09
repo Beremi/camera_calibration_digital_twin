@@ -17,6 +17,14 @@ from calib_sim.reporting.isaac_second_pass_suite import DEFAULT_SECOND_PASS_DRAF
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _repo_relative(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-root", default="output/isaac_runs")
@@ -397,21 +405,21 @@ def render_media_bundle(output_root: Path, *, lock_path: Path, fps: int, max_fra
             if run_id
         ]
         draft_selection["media_source_run_ids"] = representative_run_ids
-        draft_selection["presentation_manifest_path"] = str(manifest_path.resolve())
+        draft_selection["presentation_manifest_path"] = _repo_relative(manifest_path)
         draft_selection["media_artifacts_stale"] = False
         build_summary_path = draft_selection.get("publication_build_summary_path")
         if build_summary_path:
-            build_summary_file = Path(str(build_summary_path))
+            build_summary_file = REPO_ROOT / str(build_summary_path)
             if build_summary_file.exists():
                 build_summary = _load_json(build_summary_file)
                 if build_summary.get("pdf_exists") and not build_summary.get("placeholders_remaining"):
                     draft_selection["draft_ready"] = True
-                    draft_selection["draft_suite_status"] = "publication_complete"
+                    draft_selection["draft_suite_status"] = "review_bundle_ready"
                     draft_selection[
                         "draft_suite_status_reason"
                     ] = (
-                        "The refreshed second-pass suite, PDF build, and local presentation bundle "
-                        "have all been regenerated from the promoted fused draft lock."
+                        "The refreshed second-pass suite, PDF build, presentation bundle, and "
+                        "dashboard have all been regenerated from the promoted fused draft lock."
                     )
         _write_json(lock_path, lock_payload)
     return manifest

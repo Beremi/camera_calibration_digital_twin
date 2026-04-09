@@ -49,6 +49,12 @@ def test_second_pass_suite_artifacts_write_tables_macros_and_figures(tmp_path: P
         "anchor_vs_aux_residuals_dropout.png",
         "smoother_feedback_compare.png",
         "tuning_heatmap_fused.png",
+        "representative_nominal_first_frame.png",
+        "representative_nominal_sim_waypoints.png",
+        "representative_nominal_position_estimation.png",
+        "representative_nominal_pattern_world_positions.png",
+        "representative_nominal_imu_measurements.png",
+        "representative_nominal_pattern_relative_camera_positions.png",
     ):
         assert (analysis_dir / figure_name).exists()
 

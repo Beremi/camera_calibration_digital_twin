@@ -656,6 +656,42 @@ def generate_second_pass_suite_artifacts(
             right_label="fused",
             right_path=Path(nominal_fused["run_dir"]) / "analysis" / "smoother_correction_timeline.png",
         )
+        _copy_run_figure(
+            nominal_fused,
+            "report_data/sim_first_frame.png",
+            analysis_dir / "representative_nominal_first_frame.png",
+            title="Representative Nominal First Frame",
+        )
+        _copy_run_figure(
+            nominal_fused,
+            "report_data/sim_waypoint_arrivals.png",
+            analysis_dir / "representative_nominal_sim_waypoints.png",
+            title="Representative Nominal Simulation Stills",
+        )
+        _copy_run_figure(
+            nominal_fused,
+            "report_data/position_estimation_timeline.png",
+            analysis_dir / "representative_nominal_position_estimation.png",
+            title="Representative Nominal Position Estimation",
+        )
+        _copy_run_figure(
+            nominal_fused,
+            "report_data/pattern_world_positions_timeline.png",
+            analysis_dir / "representative_nominal_pattern_world_positions.png",
+            title="Representative Nominal Pattern World Positions",
+        )
+        _copy_run_figure(
+            nominal_fused,
+            "report_data/imu_measurements_timeline.png",
+            analysis_dir / "representative_nominal_imu_measurements.png",
+            title="Representative Nominal IMU Measurements",
+        )
+        _copy_run_figure(
+            nominal_fused,
+            "report_data/pattern_relative_camera_positions_timeline.png",
+            analysis_dir / "representative_nominal_pattern_relative_camera_positions.png",
+            title="Representative Nominal Relative Camera Positions",
+        )
     if dropout_visual and dropout_fused:
         _compose_two_panel_figure(
             analysis_dir / "dropout_trajectory_compare.png",

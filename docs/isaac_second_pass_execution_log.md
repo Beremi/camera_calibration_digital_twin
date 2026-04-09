@@ -1003,3 +1003,71 @@ Outcome:
   - the first usable second-pass draft package is now built and verified from
     the refreshed suite without regressing the frozen first-pass publication
     path
+
+## 2026-04-09 Review-Bundle Reproducibility And Manuscript Upgrade
+
+- commit: `6ec3cec`
+
+33. `.venv`
+
+```bash
+python scripts/build_isaac_second_pass_review_bundle.py
+```
+
+Outcome:
+- completed
+- purpose:
+  - rebuild the second-pass PDF, media bundle, dashboard, and one repo-relative
+    review manifest from the current draft lock
+- wrote:
+  - `docs/second_pass_review_manifest.json`
+  - repo-relative lock paths for:
+    - `publication_build_summary_path`
+    - `publication_pdf_path`
+    - `presentation_manifest_path`
+    - `tuning_summary_path`
+    - `review_manifest_path`
+- lock result:
+  - `draft_ready = true`
+  - `suite_artifacts_stale = false`
+  - `media_artifacts_stale = false`
+  - `draft_suite_status = review_bundle_ready`
+- conclusion:
+  - the review package is now reproducible from a clone with one wrapper
+    command instead of a mix of machine-local paths and manual steps
+
+34. `.venv`
+
+```bash
+pytest -q tests/test_isaac_second_pass_suite.py \
+          tests/test_isaac_second_pass_publication.py \
+          tests/test_isaac_second_pass_media_bundle.py \
+          tests/test_isaac_second_pass_review_bundle.py
+python scripts/build_isaac_second_pass_publication.py
+python scripts/render_isaac_media_bundle.py
+python scripts/build_isaac_presentation_dashboard.py
+python scripts/verify_isaac_first_pass_suite.py
+python scripts/build_isaac_first_pass_publication.py
+```
+
+Outcome:
+- passed
+- result:
+  - second-pass packaging regressions: passed
+  - second-pass PDF:
+    - `pdf_exists = true`
+    - `placeholders_remaining = false`
+  - second-pass media bundle:
+    - `presentation_manifest.json` exists
+    - dashboard `index.html` exists
+  - first-pass suite verify:
+    - `artifact_source = latest_first_pass_suite`
+    - `ok = true`
+  - first-pass publication build:
+    - `artifact_source = latest_first_pass_suite`
+    - `pdf_exists = true`
+    - `placeholders_remaining = false`
+- conclusion:
+  - the repo is now internally consistent: the lock, README, handoff, paper,
+    dashboard, and execution log all point to the same reviewable second-pass
+    draft package

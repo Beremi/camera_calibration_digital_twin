@@ -50,6 +50,12 @@ def test_report_generation_writes_metrics_tables_and_figures(tmp_path) -> None:
     assert (run_dir / "analysis" / "report_data" / "path_tracking_rows.tex").exists()
     assert (run_dir / "analysis" / "report_data" / "system_architecture.png").exists()
     assert (run_dir / "analysis" / "report_data" / "actuator_command_vs_realized.png").exists()
+    assert (run_dir / "analysis" / "report_data" / "sim_first_frame.png").exists()
+    assert (run_dir / "analysis" / "report_data" / "sim_waypoint_arrivals.png").exists()
+    assert (run_dir / "analysis" / "report_data" / "position_estimation_timeline.png").exists()
+    assert (run_dir / "analysis" / "report_data" / "pattern_world_positions_timeline.png").exists()
+    assert (run_dir / "analysis" / "report_data" / "imu_measurements_timeline.png").exists()
+    assert (run_dir / "analysis" / "report_data" / "pattern_relative_camera_positions_timeline.png").exists()
     assert (run_dir / "analysis" / "isaac_metrics_summary.png").exists()
     assert (run_dir / "analysis" / "isaac_uncertainty_timeline.png").exists()
     assert payload["metrics"]["run_id"] == "test_run"

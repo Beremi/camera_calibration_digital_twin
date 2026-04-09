@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from calib_sim.reporting.isaac_second_pass_suite import generate_second_pass_suite_artifacts
@@ -51,3 +53,35 @@ def test_second_pass_suite_artifacts_write_tables_macros_and_figures(tmp_path: P
     summary = json.loads((analysis_dir / "suite_summary.json").read_text(encoding="utf-8"))
     assert len(summary["run_ids"]) == 18
     assert summary["artifact_source"] == "latest_second_pass_suite"
+    assert summary["fused_filter_overrides"]["suppression_propagation_mode"] == "gyro_only"
+    assert summary["fused_filter_overrides"]["suppression_imu_specific_force_gate_mps2"] == 10.0
+    assert summary["fused_filter_overrides"]["dropout_post_reacquisition_covariance_scale"] == 8.0
+
+
+def test_second_pass_suite_dry_run_shows_fused_filter_overrides(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    output_root = tmp_path / "output" / "isaac_runs"
+    docs_dir = tmp_path / "docs"
+    lock_path = make_second_pass_draft_lock(docs_dir)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "run_isaac_second_pass_draft_suite.py"),
+            "--output-root",
+            str(output_root),
+            "--lock-path",
+            str(lock_path),
+            "--dry-run",
+        ],
+        cwd=str(repo_root),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    fused_row = next(row for row in payload["planned_runs"] if row["estimator_mode"] == "fused")
+
+    assert fused_row["filter_overrides"]["suppression_propagation_mode"] == "gyro_only"
+    assert fused_row["filter_overrides"]["suppression_imu_specific_force_gate_mps2"] == 10.0
+    assert fused_row["filter_overrides"]["dropout_post_reacquisition_covariance_scale"] == 8.0

@@ -2,11 +2,11 @@
 
 ## Current Work Packet
 
-- current suppression-propagation packet head: `3a4a582`
-- previous dropout-debug packet head: `bff0408`
+- current packet head: `a1b0d4f`
+- previous packet head: `3a4a582`
 - working baseline commit SHA: `334e5a2`
 - preserved pre-draft checkpoint: `b3f23c9`
-- current milestone: `suppression-window propagation stabilization for fused intermittent-anchor`
+- current milestone: `suite rerun complete; publication refresh pending`
 - control dropout bundle: `output/isaac_runs/latest_second_pass_dropout_debug`
 
 This branch continues from the frozen first-pass publication milestone tagged
@@ -18,104 +18,75 @@ diagnosis and repair only.
 
 ## Current Closure Status
 
-The second-pass first-draft closure attempt is currently blocked by the fused
-intermittent-anchor condition, not by publication plumbing.
+The estimator-side blocker for the first usable second-pass draft is now
+cleared. The fused intermittent-anchor condition is no longer catastrophic
+under the promoted suppression strategy, and the full 18-run suite has been
+rerun from the refreshed draft lock. Publication closure is now the remaining
+work: regenerate the second-pass PDF, figures, and media bundle from the new
+suite artifacts and tighten the written claims around what the rerun actually
+shows.
 
 What is true right now:
 
-- the full 18-run draft suite was executed once under the provisional
-  anchor-only fused lock
-- that suite showed catastrophic fused intermittent-anchor instability while
-  visual remained well behaved
-- the dedicated six-run seed-`007` dropout debug pack has now been executed on
-  real Isaac runs
-- four fused-path repairs are now in place:
-  - the inertial helper uses standard constant-acceleration position
-    kinematics instead of the old doubled position update
-  - the runtime samples synthetic IMU motion from the live camera pose
-    instead of the end-effector pose
-  - the synthetic IMU path now low-pass filters and clips numerically
-    differentiated velocity, acceleration, and specific force
-  - the runtime now rejects implausible high-specific-force IMU packets during
-    suppression windows before fused prediction
-- after those fixes, the production fused intermittent-anchor baseline has
-  improved from catastrophic draft-suite failure to a still-blocked but
-  interpretable regime:
-  - `second_pass_dropout_debug_fused_seed_007`
-    - mean position error: `0.15517 m`
-    - mean waypoint error: `0.02421 m`
-    - empirical 95% coverage: `76.04%`
-    - pose NEES: `195.95`
-    - root-cause hint: `propagation_process_problem`
-- the diagnostic `second_pass_dropout_debug_fused_no_imu_during_suppression_seed_007`
-  variant clears the blocker bar cleanly, which localizes the remaining defect
-  to suppression-window propagation rather than the smoother or a pure
-  reacquisition-only failure
-- the current packet has now produced one production-like suppression candidate
-  under a separate probe root without overwriting the control bundle:
-  - candidate root:
-    `output/isaac_runs/probes/gyro_only_gate_10_validation`
-  - candidate runtime policy:
-    - `suppression_propagation_mode = gyro_only`
-    - `suppression_imu_specific_force_gate_mps2 = 10.0`
-    - `dropout_post_reacquisition_covariance_scale = 8.0`
-  - validated intermittent-anchor fused runs:
-    - seed `007`:
-      - mean position error: `0.03091 m`
-      - mean waypoint error: `0.02379 m`
-      - empirical 95% coverage: `88.96%`
-      - pose NEES: `10.10`
-    - seed `011`:
-      - mean position error: `0.03560 m`
-      - mean waypoint error: `0.02235 m`
-      - empirical 95% coverage: `86.04%`
-      - pose NEES: `13.02`
-    - seed `017`:
-      - mean position error: `0.02935 m`
-      - mean waypoint error: `0.02203 m`
-      - empirical 95% coverage: `93.75%`
-      - pose NEES: `10.42`
-- that same candidate preserved a healthy nominal fused follow-up:
-  - `second_pass_followup_fused_nominal_anchor_only_seed_007_gyro_only_covinfl_gate_10`
-    - mean position error: `0.01278 m`
-    - mean waypoint error: `0.02408 m`
+- the historical control bundle under
+  `output/isaac_runs/latest_second_pass_dropout_debug` remains preserved as the
+  blocked baseline
+- the validated suppression winner has now been promoted into the real draft
+  lock:
+  - `suppression_propagation_mode = gyro_only`
+  - `suppression_imu_specific_force_gate_mps2 = 10.0`
+  - `dropout_post_reacquisition_covariance_scale = 8.0`
+  - anchor-only runtime policy with aux disabled in filter, smoother, and
+    control
+- a focused nominal retune selected the current fused nominal reference:
+  - run id:
+    `second_pass_tuning_anchor_only_lightweight_seed_007_imu_8p0_vision_2p0_post_2p0_gyro_default_accel_default_supp_gyro_only_gate_10p0_covinfl_8p0`
+  - mean position error: `0.01293 m`
+  - mean waypoint error: `0.02374 m`
+  - empirical 95% coverage: `99.79%`
+  - pose NEES: `4.23`
+- the full 18-run suite has now been rerun from that promoted lock:
+  - nominal / fused:
+    - mean position error: `0.01303 m`
+    - mean waypoint error: `0.02293 m`
+    - empirical 95% coverage: `99.72%`
+    - pose NEES: `4.25`
+  - nominal / visual:
+    - mean position error: `0.01388 m`
+    - mean waypoint error: `0.01979 m`
     - empirical 95% coverage: `99.79%`
-    - pose NEES: `3.97`
-- the latest nominal fused recheck stayed healthy while the dropout fixes were
-  landing:
-  - `second_pass_followup_fused_nominal_anchor_only_seed_007`
-    - mean position error: `0.01284 m`
-    - mean waypoint error: `0.02392 m`
+    - pose NEES: `5.01`
+  - intermittent anchor / fused:
+    - mean position error: `0.03072 m`
+    - mean waypoint error: `0.02250 m`
+    - empirical 95% coverage: `88.82%`
+    - pose NEES: `14.02`
+  - intermittent anchor / visual:
+    - mean position error: `0.01983 m`
+    - mean waypoint error: `0.01874 m`
+    - empirical 95% coverage: `90.49%`
+    - pose NEES: `10.56`
+  - servo stress / fused:
+    - mean position error: `0.01328 m`
+    - mean waypoint error: `0.02646 m`
     - empirical 95% coverage: `99.79%`
-    - pose NEES: `3.97`
+    - pose NEES: `4.26`
+  - servo stress / visual:
+    - mean position error: `0.01390 m`
+    - mean waypoint error: `0.02366 m`
+    - empirical 95% coverage: `99.79%`
+    - pose NEES: `5.01`
+- there is no catastrophic fused intermittent-anchor row in the refreshed
+  suite
+- nominal fused stayed healthy and is within the requested 10% position-error
+  window relative to visual at the suite level
 - future runs now persist the actual overridden estimator/control configuration
   into the saved run manifest rather than the raw YAML defaults
 
-The practical conclusion is now narrower: the control dropout bundle remains
-blocked, but the packet has identified and validated one production-like fused
-suppression strategy that clears the blocker bar on seeds `007`, `011`, and
-`017` without regressing the healthy nominal fused run. The next packet can
-promote that candidate into the draft lock, rerun focused tuning if needed, and
-then reopen the 18-run suite. It should still not reopen the paper or media
-paths until that rerun is complete.
-
-The next work packet is therefore a dedicated seed-`007` dropout debug pack:
-
-- `scripts/run_isaac_second_pass_dropout_debug.py`
-- per-run raw traces:
-  - `raw/dropout_debug_frames.csv`
-  - `raw/dropout_debug_events.csv`
-- per-run analysis:
-  - `analysis/dropout_debug_summary.json`
-  - the dropout timeline figures
-- pack-level bundle:
-  - `output/isaac_runs/latest_second_pass_dropout_debug/summary.csv`
-  - `output/isaac_runs/latest_second_pass_dropout_debug/summary.json`
-  - `docs/isaac_second_pass_dropout_debug.md`
-
-Do not rerun the 18-run suite, rebuild the second-pass draft PDF, or rerender
-polished media until at least one fused intermittent-anchor debug variant
-clears the interim blocker bar.
+The practical conclusion is now straightforward: the branch has a credible
+post-fix 18-run science suite and a real fused draft lock. The next packet is
+publication closure, not more estimator plumbing unless the refreshed paper
+review surfaces a new inconsistency.
 
 ## Preserved Checkpoint
 

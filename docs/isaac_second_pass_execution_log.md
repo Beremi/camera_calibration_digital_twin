@@ -777,3 +777,137 @@ Outcome:
 - conclusion:
   - the suppression-propagation packet winner did not regress the frozen
     first-pass publication path
+
+## 2026-04-09 Lock Promotion, Focused Retune, And Suite Rerun
+
+- commit: `a1b0d4f`
+
+27. `.venv-isaac`
+
+```bash
+python scripts/run_isaac_second_pass_tuning.py \
+  --headless --execute-missing \
+  --phases anchor_only \
+  --imu-process-covariance-scales 4 8 \
+  --vision-covariance-scales 2 4 \
+  --post-relocalization-covariance-scales 1 2
+```
+
+Outcome:
+- completed
+- purpose:
+  - promote the validated suppression winner into the real draft lock and do a
+    narrow nominal retune around it without reopening aux-enabled tuning phases
+- selected fused nominal reference:
+  - run id:
+    `second_pass_tuning_anchor_only_lightweight_seed_007_imu_8p0_vision_2p0_post_2p0_gyro_default_accel_default_supp_gyro_only_gate_10p0_covinfl_8p0`
+  - runtime/filter policy:
+    - `suppression_propagation_mode = gyro_only`
+    - `suppression_imu_specific_force_gate_mps2 = 10.0`
+    - `dropout_post_reacquisition_covariance_scale = 8.0`
+    - aux disabled in filter, smoother, and control
+  - selected covariance scales:
+    - `imu_process_covariance_scale = 8.0`
+    - `vision_covariance_scale = 2.0`
+    - `post_relocalization_covariance_scale = 2.0`
+  - metrics:
+    - mean position error: `0.01293 m`
+    - mean waypoint error: `0.02374 m`
+    - empirical 95% coverage: `99.79%`
+    - pose NEES: `4.23`
+- wrote:
+  - `output/isaac_runs/latest_second_pass_tuning/summary.json`
+  - `output/isaac_runs/latest_second_pass_tuning/summary.csv`
+  - `output/isaac_runs/latest_second_pass_tuning/top_fused_candidates.csv`
+- conclusion:
+  - the promoted suppression strategy stayed nominally healthy and the focused
+    retune preferred `vision = 2.0` and `post = 2.0` over the earlier
+    validation settings
+
+28. `.venv-isaac`
+
+```bash
+rm -rf output/isaac_runs/latest_second_pass_suite output/isaac_runs/second_pass_draft_*
+python scripts/run_isaac_second_pass_draft_suite.py --headless --execute-missing
+```
+
+Outcome:
+- completed
+- purpose:
+  - rerun the full 18-run second-pass suite from the promoted fused lock
+- wrote:
+  - `output/isaac_runs/latest_second_pass_suite/analysis/suite_summary.json`
+  - `draft_nominal_table.csv`
+  - `draft_dropout_table.csv`
+  - `draft_actuation_stress_table.csv`
+  - `draft_uncertainty_table.csv`
+  - `draft_map_quality_table.csv`
+- key suite aggregates:
+  - nominal / fused:
+    - mean position error: `0.01303 m`
+    - mean waypoint error: `0.02293 m`
+    - empirical 95% coverage: `99.72%`
+    - pose NEES: `4.25`
+  - nominal / visual:
+    - mean position error: `0.01388 m`
+    - mean waypoint error: `0.01979 m`
+    - empirical 95% coverage: `99.79%`
+    - pose NEES: `5.01`
+  - intermittent anchor / fused:
+    - mean position error: `0.03072 m`
+    - mean waypoint error: `0.02250 m`
+    - empirical 95% coverage: `88.82%`
+    - pose NEES: `14.02`
+  - intermittent anchor / visual:
+    - mean position error: `0.01983 m`
+    - mean waypoint error: `0.01874 m`
+    - empirical 95% coverage: `90.49%`
+    - pose NEES: `10.56`
+  - servo stress / fused:
+    - mean position error: `0.01328 m`
+    - mean waypoint error: `0.02646 m`
+    - empirical 95% coverage: `99.79%`
+    - pose NEES: `4.26`
+  - servo stress / visual:
+    - mean position error: `0.01390 m`
+    - mean waypoint error: `0.02366 m`
+    - empirical 95% coverage: `99.79%`
+    - pose NEES: `5.01`
+- conclusion:
+  - there is no catastrophic fused intermittent-anchor row in the refreshed
+    suite
+  - nominal fused remains healthy and is within the requested 10% position
+    window relative to visual at the suite level
+  - publication and media refresh were intentionally deferred to the next
+    packet
+
+29. `.venv`
+
+```bash
+pytest -q tests/test_estimation_factors.py \
+          tests/test_imu_semantics.py \
+          tests/test_isaac_mode_semantics.py \
+          tests/test_isaac_second_pass_tuning.py \
+          tests/test_isaac_second_pass_suite.py \
+          tests/test_isaac_second_pass_media_bundle.py \
+          tests/test_isaac_second_pass_dropout_debug.py \
+          tests/test_isaac_second_pass_switches.py \
+          tests/test_isaac_suppression_windows.py
+python scripts/verify_isaac_first_pass_suite.py
+python scripts/build_isaac_first_pass_publication.py
+```
+
+Outcome:
+- passed
+- result:
+  - regression slice: `40 passed`
+  - first-pass suite verify:
+    - `artifact_source = latest_first_pass_suite`
+    - `ok = true`
+  - first-pass publication build:
+    - `artifact_source = latest_first_pass_suite`
+    - `pdf_exists = true`
+    - `placeholders_remaining = false`
+- conclusion:
+  - the lock-promotion and full-suite rerun packet did not regress the frozen
+    first-pass publication path

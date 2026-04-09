@@ -15,6 +15,7 @@ from calib_sim.reporting.isaac_second_pass_suite import (
     DEFAULT_SECOND_PASS_DRAFT_LOCK,
     DEFAULT_SECOND_PASS_DRAFT_SEEDS,
     generate_second_pass_suite_artifacts,
+    second_pass_fused_filter_overrides,
     second_pass_draft_run_id,
 )
 
@@ -71,7 +72,11 @@ def _condition_overrides(condition: str, args: argparse.Namespace) -> dict[str, 
     raise ValueError(f"Unsupported second-pass draft condition: {condition}")
 
 
-def _selection_settings(lock_payload: dict[str, Any], *, estimator_mode: str) -> tuple[str, dict[str, Any], dict[str, bool]]:
+def _selection_settings(
+    lock_payload: dict[str, Any],
+    *,
+    estimator_mode: str,
+) -> tuple[str, dict[str, Any], dict[str, bool], dict[str, Any]]:
     draft_selection = dict(lock_payload.get("draft_selection", {}))
     if estimator_mode == "fused":
         backend = str(draft_selection.get("fused_nominal_backend", "lightweight"))
@@ -86,7 +91,7 @@ def _selection_settings(lock_payload: dict[str, Any], *, estimator_mode: str) ->
                 },
             )
         )
-        return backend, covariance_scales, runtime_switches
+        return backend, covariance_scales, runtime_switches, second_pass_fused_filter_overrides(lock_payload)
     runtime_switches = dict(
         draft_selection.get(
             "visual_runtime_switches",
@@ -97,7 +102,7 @@ def _selection_settings(lock_payload: dict[str, Any], *, estimator_mode: str) ->
             },
         )
     )
-    return "lightweight", {}, runtime_switches
+    return "lightweight", {}, runtime_switches, {}
 
 
 def _run_command(
@@ -109,6 +114,7 @@ def _run_command(
     smoother_backend: str,
     covariance_scales: dict[str, Any],
     runtime_switches: dict[str, bool],
+    filter_overrides: dict[str, Any],
 ) -> list[str]:
     overrides = _condition_overrides(condition, args)
     run_id = second_pass_draft_run_id(condition, estimator_mode, seed)
@@ -178,6 +184,26 @@ def _run_command(
         if value in (None, ""):
             continue
         command.extend([flag, str(value)])
+    if estimator_mode == "fused":
+        command.append(
+            "--allow-anchor-reacquisition-after-first-lock"
+            if bool(filter_overrides.get("allow_anchor_reacquisition_after_first_lock", True))
+            else "--no-allow-anchor-reacquisition-after-first-lock"
+        )
+        command.append(
+            "--disable-imu-prediction-while-anchor-suppressed"
+            if bool(filter_overrides.get("disable_imu_prediction_while_anchor_suppressed", False))
+            else "--no-disable-imu-prediction-while-anchor-suppressed"
+        )
+        mode = filter_overrides.get("suppression_propagation_mode")
+        if mode not in (None, ""):
+            command.extend(["--suppression-propagation-mode", str(mode)])
+        gate = filter_overrides.get("suppression_imu_specific_force_gate_mps2")
+        if gate not in (None, ""):
+            command.extend(["--suppression-imu-specific-force-gate-mps2", str(gate)])
+        covinfl = filter_overrides.get("dropout_post_reacquisition_covariance_scale")
+        if covinfl not in (None, ""):
+            command.extend(["--dropout-post-reacquisition-covariance-scale", str(covinfl)])
     if args.headless:
         command.append("--headless")
     return command
@@ -199,7 +225,7 @@ def run_suite(args: argparse.Namespace) -> dict[str, Any]:
     executed_runs = []
     for condition in args.conditions:
         for estimator_mode in ("visual", "fused"):
-            smoother_backend, covariance_scales, runtime_switches = _selection_settings(
+            smoother_backend, covariance_scales, runtime_switches, filter_overrides = _selection_settings(
                 lock_payload,
                 estimator_mode=estimator_mode,
             )
@@ -214,6 +240,7 @@ def run_suite(args: argparse.Namespace) -> dict[str, Any]:
                         "seed": int(seed),
                         "smoother_backend": smoother_backend,
                         "runtime_switches": runtime_switches,
+                        "filter_overrides": filter_overrides,
                     }
                 )
                 metrics_path = run_dir / "analysis" / "metrics.json"
@@ -228,6 +255,7 @@ def run_suite(args: argparse.Namespace) -> dict[str, Any]:
                             smoother_backend=smoother_backend,
                             covariance_scales=covariance_scales,
                             runtime_switches=runtime_switches,
+                            filter_overrides=filter_overrides,
                         ),
                         cwd=str(REPO_ROOT),
                         check=True,
@@ -265,6 +293,13 @@ def run_suite(args: argparse.Namespace) -> dict[str, Any]:
         draft_selection = lock_payload.setdefault("draft_selection", {})
         draft_selection["suite_run_ids"] = [str(item["run_id"]) for item in planned_runs]
         draft_selection["representative_run_ids"] = dict(suite_summary.get("representative_runs", {}))
+        draft_selection["suite_artifacts_stale"] = False
+        draft_selection["media_artifacts_stale"] = True
+        draft_selection["draft_ready"] = False
+        draft_selection["draft_suite_status"] = "fresh_suite_rerun_pending_publication_refresh"
+        draft_selection[
+            "draft_suite_status_reason"
+        ] = "The 18-run suite has been rerun from the promoted fused lock, but the second-pass publication draft and media bundle have not yet been regenerated from these refreshed artifacts."
         _write_json(lock_path, lock_payload)
     return {
         "planned_runs": planned_runs,
@@ -287,6 +322,7 @@ def main() -> int:
                     "seed": int(seed),
                     "smoother_backend": _selection_settings(lock_payload, estimator_mode=estimator_mode)[0],
                     "runtime_switches": _selection_settings(lock_payload, estimator_mode=estimator_mode)[2],
+                    "filter_overrides": _selection_settings(lock_payload, estimator_mode=estimator_mode)[3],
                 }
                 for condition in args.conditions
                 for estimator_mode in ("visual", "fused")

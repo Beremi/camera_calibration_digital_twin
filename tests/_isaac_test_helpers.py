@@ -1100,6 +1100,7 @@ def make_second_pass_draft_lock(docs_dir: Path) -> Path:
             ],
         },
         "draft_selection": {
+            "draft_ready": False,
             "fused_nominal_backend": "lightweight",
             "fused_nominal_covariance_scales": {
                 "vision_covariance_scale": 1.0,
@@ -1114,6 +1115,13 @@ def make_second_pass_draft_lock(docs_dir: Path) -> Path:
                 "use_aux_tags_in_filter": True,
                 "use_aux_tags_in_smoother": True,
                 "use_aux_map_for_control": True,
+            },
+            "fused_nominal_filter_overrides": {
+                "allow_anchor_reacquisition_after_first_lock": True,
+                "disable_imu_prediction_while_anchor_suppressed": False,
+                "suppression_propagation_mode": "gyro_only",
+                "suppression_imu_specific_force_gate_mps2": 10.0,
+                "dropout_post_reacquisition_covariance_scale": 8.0,
             },
             "fused_nominal_reference_run_id": "second_pass_draft_fused_nominal_full_anchor_seed_007",
             "visual_nominal_reference_run_id": "second_pass_draft_visual_nominal_full_anchor_seed_007",

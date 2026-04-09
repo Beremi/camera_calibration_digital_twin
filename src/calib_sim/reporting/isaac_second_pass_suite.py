@@ -25,6 +25,13 @@ DEFAULT_SECOND_PASS_CONDITIONS = (
     "intermittent_anchor",
     "servo_stress",
 )
+DEFAULT_SECOND_PASS_FUSED_FILTER_OVERRIDES = {
+    "allow_anchor_reacquisition_after_first_lock": True,
+    "disable_imu_prediction_while_anchor_suppressed": False,
+    "suppression_propagation_mode": "full_imu",
+    "suppression_imu_specific_force_gate_mps2": None,
+    "dropout_post_reacquisition_covariance_scale": None,
+}
 _CONDITION_LABELS = {
     "nominal_full_anchor": "Nominal / full anchor",
     "intermittent_anchor": "Intermittent anchor",
@@ -34,6 +41,28 @@ _CONDITION_LABELS = {
 
 def second_pass_draft_run_id(condition: str, estimator_mode: str, seed: int) -> str:
     return f"second_pass_draft_{estimator_mode}_{condition}_seed_{int(seed):03d}"
+
+
+def second_pass_fused_filter_overrides(lock_payload: dict[str, Any]) -> dict[str, Any]:
+    draft_selection = dict(lock_payload.get("draft_selection", {}))
+    configured = dict(draft_selection.get("fused_nominal_filter_overrides", {}))
+    merged = dict(DEFAULT_SECOND_PASS_FUSED_FILTER_OVERRIDES)
+    merged.update(configured)
+    return {
+        "allow_anchor_reacquisition_after_first_lock": bool(
+            merged.get("allow_anchor_reacquisition_after_first_lock", True)
+        ),
+        "disable_imu_prediction_while_anchor_suppressed": bool(
+            merged.get("disable_imu_prediction_while_anchor_suppressed", False)
+        ),
+        "suppression_propagation_mode": str(merged.get("suppression_propagation_mode", "full_imu")),
+        "suppression_imu_specific_force_gate_mps2": _float_or_none(
+            merged.get("suppression_imu_specific_force_gate_mps2")
+        ),
+        "dropout_post_reacquisition_covariance_scale": _float_or_none(
+            merged.get("dropout_post_reacquisition_covariance_scale")
+        ),
+    }
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -658,6 +687,7 @@ def generate_second_pass_suite_artifacts(
         "lock_path": str(Path(lock_path).resolve()),
         "run_ids": [str(record["run_id"]) for record in records],
         "draft_selection": dict(lock_payload.get("draft_selection", {})),
+        "fused_filter_overrides": second_pass_fused_filter_overrides(lock_payload),
         "runtime_rows": runtime_rows,
         "nominal_rows": nominal_rows,
         "dropout_rows": dropout_rows,
@@ -688,6 +718,8 @@ __all__ = [
     "DEFAULT_SECOND_PASS_CONDITIONS",
     "DEFAULT_SECOND_PASS_DRAFT_LOCK",
     "DEFAULT_SECOND_PASS_DRAFT_SEEDS",
+    "DEFAULT_SECOND_PASS_FUSED_FILTER_OVERRIDES",
     "generate_second_pass_suite_artifacts",
+    "second_pass_fused_filter_overrides",
     "second_pass_draft_run_id",
 ]

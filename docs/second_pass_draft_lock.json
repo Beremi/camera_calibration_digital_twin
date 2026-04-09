@@ -3,10 +3,11 @@
     "canonical_seed": 7,
     "classification": "fused_mechanization_or_weighting_bug",
     "commit": "b3f23c9",
-    "current_work_packet_commit": "3a4a582",
-    "draft_selection_status": "winner_candidate_validated_pending_lock_promotion_and_suite_rerun",
+    "current_work_packet_commit": "a1b0d4f",
+    "draft_selection_status": "lock_promoted_and_suite_rerun_complete_pending_publication_refresh",
     "dropout_debug_bundle_dir": "output/isaac_runs/latest_second_pass_dropout_debug",
     "dropout_debug_docs_path": "docs/isaac_second_pass_dropout_debug.md",
+    "dropout_debug_root_cause_hint": "propagation_process_problem",
     "dropout_debug_run_ids": [
       "second_pass_dropout_debug_visual_seed_007",
       "second_pass_dropout_debug_fused_seed_007",
@@ -15,7 +16,6 @@
       "second_pass_dropout_debug_fused_covinfl_seed_007",
       "second_pass_dropout_debug_fused_clipcorr_seed_007"
     ],
-    "dropout_debug_root_cause_hint": "propagation_process_problem",
     "exploratory_run_ids": [
       "second_pass_explore_fused_intermittent_aux_estimation_only_seed_007",
       "second_pass_explore_fused_intermittent_aux_for_control_seed_007",
@@ -35,12 +35,10 @@
     ]
   },
   "draft_selection": {
+    "draft_readiness_note": "The validated fused suppression winner has now been promoted into the real draft lock, a focused nominal retune selected the lightweight anchor-only configuration with imu_process_covariance_scale = 8.0, vision_covariance_scale = 2.0, and post_relocalization_covariance_scale = 2.0, and the full 18-run second-pass suite has been rerun from that lock. Suite artifacts are now fresh and the fused intermittent-anchor row is no longer catastrophic, but the second-pass publication draft PDF, figures, and media bundle have not yet been regenerated from these refreshed artifacts.",
     "draft_ready": false,
-    "draft_readiness_note": "The control dropout bundle under latest_second_pass_dropout_debug remains blocked, so the second-pass draft suite and media outputs are still stale. This packet did validate one production-like fused suppression candidate under output/isaac_runs/probes/gyro_only_gate_10_validation: suppression_propagation_mode = gyro_only, suppression_imu_specific_force_gate_mps2 = 10.0, and dropout_post_reacquisition_covariance_scale = 8.0. That candidate clears the blocker bar on intermittent-anchor seeds 007, 011, and 017 while preserving a healthy nominal fused seed-007 follow-up, but it has not yet been promoted into the draft lock and the full 18-run suite has not been rerun.",
-    "draft_suite_status": "stale_until_rerun_after_fused_dropout_fix",
-    "draft_suite_status_reason": "suite_run_ids below were generated before the latest dropout-debug reruns and before the current suppression-window propagation fixes fully stabilized the production fused intermittent-anchor path; do not treat them as draft-final publication inputs until the full suite is rerun",
-    "media_artifacts_stale": true,
-    "suite_artifacts_stale": true,
+    "draft_suite_status": "fresh_suite_rerun_pending_publication_refresh",
+    "draft_suite_status_reason": "The 18-run suite has been rerun from the promoted fused lock, but the second-pass publication draft and media bundle have not yet been regenerated from these refreshed artifacts.",
     "fused_nominal_backend": "lightweight",
     "fused_nominal_covariance_scales": {
       "accel_process_covariance_scale": null,
@@ -48,19 +46,26 @@
       "aux_vision_covariance_scale": null,
       "gyro_process_covariance_scale": null,
       "imu_process_covariance_scale": 8.0,
-      "post_relocalization_covariance_scale": 1.0,
-      "vision_covariance_scale": 4.0
+      "post_relocalization_covariance_scale": 2.0,
+      "vision_covariance_scale": 2.0
     },
-    "fused_nominal_reference_run_id": "second_pass_tuning_anchor_only_lightweight_seed_007_imu_8p0_vision_4p0_post_1p0_gyro_default_accel_default",
+    "fused_nominal_filter_overrides": {
+      "allow_anchor_reacquisition_after_first_lock": true,
+      "disable_imu_prediction_while_anchor_suppressed": false,
+      "dropout_post_reacquisition_covariance_scale": 8.0,
+      "suppression_imu_specific_force_gate_mps2": 10.0,
+      "suppression_propagation_mode": "gyro_only"
+    },
+    "fused_nominal_reference_run_id": "second_pass_tuning_anchor_only_lightweight_seed_007_imu_8p0_vision_2p0_post_2p0_gyro_default_accel_default_supp_gyro_only_gate_10p0_covinfl_8p0",
     "fused_nominal_runtime_switches": {
       "use_aux_map_for_control": false,
       "use_aux_tags_in_filter": false,
       "use_aux_tags_in_smoother": false
     },
-    "latest_nominal_recheck_run_id": "second_pass_followup_fused_nominal_anchor_only_seed_007_gyro_only_covinfl_gate_10",
+    "latest_nominal_recheck_run_id": "second_pass_tuning_anchor_only_lightweight_seed_007_imu_8p0_vision_2p0_post_2p0_gyro_default_accel_default_supp_gyro_only_gate_10p0_covinfl_8p0",
+    "media_artifacts_stale": true,
     "media_source_run_ids": [],
-    "packet_winner_candidate": {
-      "status": "validated_pending_lock_promotion",
+      "packet_winner_candidate": {
       "bundle_root": "output/isaac_runs/probes/gyro_only_gate_10_validation",
       "fused_intermittent_reference_run_ids": [
         "second_pass_dropout_debug_fused_covinfl_seed_007",
@@ -73,8 +78,9 @@
         "dropout_post_reacquisition_covariance_scale": 8.0,
         "suppression_imu_specific_force_gate_mps2": 10.0,
         "suppression_propagation_mode": "gyro_only"
-      }
-    },
+      },
+      "status": "promoted_into_draft_lock"
+      },
     "presentation_manifest_path": null,
     "representative_run_ids": {
       "intermittent_anchor": {
@@ -95,6 +101,7 @@
       "intermittent_anchor",
       "servo_stress"
     ],
+    "suite_artifacts_stale": false,
     "suite_run_ids": [
       "second_pass_draft_visual_nominal_full_anchor_seed_007",
       "second_pass_draft_visual_nominal_full_anchor_seed_011",

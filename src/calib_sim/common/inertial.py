@@ -151,10 +151,14 @@ def integrate_interval_constant_world_acceleration(
         accumulated_world_accel += (current_rotation_wi @ corrected_accel + gravity_world_mps2) * float(dt_s)
     mean_world_acceleration_mps2 = accumulated_world_accel / max(total_dt_s, 1e-12)
     final_velocity_world_mps = start_velocity_world_mps + mean_world_acceleration_mps2 * total_dt_s
-    # The current async headline recordings store frame-to-frame velocity as
-    # displacement / dt, so the position transition stays consistent when we
-    # apply the final interval velocity over the full frame interval.
-    final_position_world_m = start_position_world_m + final_velocity_world_mps * total_dt_s
+    # Use standard constant-acceleration kinematics so the propagated position
+    # matches the IMU motion model instead of double-counting the interval
+    # acceleration through the terminal velocity term.
+    final_position_world_m = (
+        start_position_world_m
+        + start_velocity_world_mps * total_dt_s
+        + 0.5 * mean_world_acceleration_mps2 * (total_dt_s**2)
+    )
     return AggregatedInertialTransition(
         delta_time_s=total_dt_s,
         final_rotation_wi=current_rotation_wi.astype(np.float64),

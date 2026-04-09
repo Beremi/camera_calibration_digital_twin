@@ -26,6 +26,8 @@ def test_second_pass_media_bundle_and_dashboard_build(tmp_path: Path) -> None:
             str(repo_root / "scripts" / "render_isaac_media_bundle.py"),
             "--output-root",
             str(output_root),
+            "--lock-path",
+            str(lock_path),
             "--max-frames",
             "12",
         ],
@@ -38,6 +40,10 @@ def test_second_pass_media_bundle_and_dashboard_build(tmp_path: Path) -> None:
     assert Path(media_payload["videos"]["hero_demo"]).exists()
     assert Path(media_payload["videos"]["visual_vs_fused_nominal"]).exists()
     assert Path(media_payload["videos"]["visual_vs_fused_dropout"]).exists()
+    assert Path(media_payload["videos"]["paper_teaser_second_pass"]).exists()
+    assert Path(media_payload["stills"]["scene_overview_still"]).exists()
+    assert Path(media_payload["stills"]["dropout_still"]).exists()
+    assert Path(media_payload["stills"]["servo_stress_still"]).exists()
 
     dashboard_result = subprocess.run(
         [
@@ -53,3 +59,6 @@ def test_second_pass_media_bundle_and_dashboard_build(tmp_path: Path) -> None:
     )
     dashboard_payload = json.loads(dashboard_result.stdout)
     assert Path(dashboard_payload["dashboard_path"]).exists()
+    html = Path(dashboard_payload["dashboard_path"]).read_text(encoding="utf-8")
+    assert "Key Findings" in html
+    assert "Remaining weakness" in html

@@ -42,18 +42,26 @@ def main() -> int:
         "empirical_95_coverage_percent": quality.get("uncertainty", {}).get("empirical_95_coverage_percent"),
         "pose_nees": quality.get("uncertainty", {}).get("pose_nees"),
     }
-    payload = {
-        **quality,
-        "figure_paths": figure_paths,
-    }
-    (analysis_dir / "estimator_quality.json").write_text(
+    payload = {**quality, "figure_paths": figure_paths}
+    quality_json_path = analysis_dir / "estimator_quality.json"
+    quality_csv_path = analysis_dir / "estimator_quality.csv"
+    tag_breakdown_path = analysis_dir / "tag_update_breakdown.csv"
+    quality_json_path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    _write_csv(analysis_dir / "estimator_quality.csv", [summary_row])
-    _write_csv(analysis_dir / "tag_update_breakdown.csv", list(quality.get("tag_update_breakdown", [])))
+    _write_csv(quality_csv_path, [summary_row])
+    _write_csv(tag_breakdown_path, list(quality.get("tag_update_breakdown", [])))
 
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    console_summary = {
+        "run_id": quality["run_id"],
+        "estimator_quality_json": str(quality_json_path.resolve()),
+        "estimator_quality_csv": str(quality_csv_path.resolve()),
+        "tag_update_breakdown_csv": str(tag_breakdown_path.resolve()),
+        "figure_paths": figure_paths,
+        "summary": summary_row,
+    }
+    print(json.dumps(console_summary, indent=2, sort_keys=True))
     return 0
 
 

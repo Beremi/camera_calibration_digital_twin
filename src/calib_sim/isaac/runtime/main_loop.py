@@ -529,7 +529,17 @@ class IsaacStandaloneRuntime:
     ) -> tuple:
         if self._imu_binding is None:
             return ()
-        qw, qx, qy, qz = np.asarray(ee_orientation_wxyz, dtype=np.float64).reshape(4)
+        position_world_m = np.asarray(ee_position_world_m, dtype=np.float64).reshape(3)
+        orientation_wxyz = np.asarray(ee_orientation_wxyz, dtype=np.float64).reshape(4)
+        if self._camera_binding is not None:
+            try:
+                camera_position_world_m, camera_orientation_wxyz = self._camera_binding.get_world_pose()
+                position_world_m = np.asarray(camera_position_world_m, dtype=np.float64).reshape(3)
+                orientation_wxyz = np.asarray(camera_orientation_wxyz, dtype=np.float64).reshape(4)
+            except Exception:
+                position_world_m = np.asarray(ee_position_world_m, dtype=np.float64).reshape(3)
+                orientation_wxyz = np.asarray(ee_orientation_wxyz, dtype=np.float64).reshape(4)
+        qw, qx, qy, qz = orientation_wxyz
         rotation_wi = np.array(
             [
                 [1.0 - 2.0 * (qy * qy + qz * qz), 2.0 * (qx * qy - qz * qw), 2.0 * (qx * qz + qy * qw)],
@@ -543,7 +553,7 @@ class IsaacStandaloneRuntime:
             packet = self._imu_binding.sample(
                 tick=tick,
                 timestamps=timestamps,
-                position_world_m=ee_position_world_m,
+                position_world_m=position_world_m,
                 rotation_wi=rotation_wi,
             )
             if packet is None:

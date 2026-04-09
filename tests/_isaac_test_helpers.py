@@ -885,6 +885,11 @@ def make_second_pass_draft_lock(docs_dir: Path) -> Path:
                 "accel_process_covariance_scale": None,
                 "post_relocalization_covariance_scale": 1.0,
             },
+            "fused_nominal_runtime_switches": {
+                "use_aux_tags_in_filter": True,
+                "use_aux_tags_in_smoother": True,
+                "use_aux_map_for_control": True,
+            },
             "fused_nominal_reference_run_id": "second_pass_draft_fused_nominal_full_anchor_seed_007",
             "visual_nominal_reference_run_id": "second_pass_draft_visual_nominal_full_anchor_seed_007",
             "suite_run_ids": suite_run_ids,

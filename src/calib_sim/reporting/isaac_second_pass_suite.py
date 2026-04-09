@@ -378,7 +378,47 @@ def _aggregate_rows(records: list[dict[str, Any]], *, condition: str | None = No
     return rows
 
 
-def _representative_runs(records: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, Any]]]:
+def _required_media_assets_exist(record: dict[str, Any]) -> bool:
+    run_dir = Path(record["run_dir"])
+    required_paths = (
+        run_dir / "analysis" / "report_data" / "trajectory_path.png",
+        run_dir / "analysis" / "anchor_vs_aux_residuals.png",
+        run_dir / "analysis" / "smoother_correction_timeline.png",
+    )
+    if not all(path.exists() for path in required_paths):
+        return False
+    rgb_dir = run_dir / "raw" / "rgb"
+    return rgb_dir.exists() and any(rgb_dir.glob("*.png"))
+
+
+def _median(values: list[float | None]) -> float | None:
+    usable = [float(value) for value in values if value is not None]
+    if not usable:
+        return None
+    return float(np.median(np.asarray(usable, dtype=np.float64)))
+
+
+def _is_clear_outlier(value: float | None, values: list[float | None]) -> bool:
+    usable = [float(item) for item in values if item is not None]
+    if value is None or len(usable) < 3:
+        return False
+    median = float(np.median(np.asarray(usable, dtype=np.float64)))
+    deviations = sorted(abs(item - median) for item in usable)
+    candidate_deviation = abs(float(value) - median)
+    if not deviations or candidate_deviation < deviations[-1] - 1e-12:
+        return False
+    if len(deviations) == 1:
+        return False
+    second_largest = deviations[-2]
+    return candidate_deviation > max(1.5 * second_largest, second_largest + 1e-9)
+
+
+def _representative_runs(
+    records: list[dict[str, Any]],
+    *,
+    lock_payload: dict[str, Any] | None = None,
+) -> dict[str, dict[str, dict[str, Any]]]:
+    locked = dict(lock_payload.get("draft_selection", {}).get("representative_run_ids", {})) if lock_payload else {}
     by_condition: dict[str, dict[str, dict[str, Any]]] = {}
     for condition in DEFAULT_SECOND_PASS_CONDITIONS:
         by_condition[condition] = {}
@@ -390,8 +430,39 @@ def _representative_runs(records: list[dict[str, Any]]) -> dict[str, dict[str, d
             ]
             if not candidates:
                 continue
-            seed7 = next((record for record in candidates if record.get("seed") == 7), None)
-            by_condition[condition][estimator_mode] = seed7 or candidates[0]
+            locked_run_id = str(locked.get(condition, {}).get(estimator_mode, "") or "")
+            if locked_run_id:
+                locked_record = next((record for record in candidates if str(record["run_id"]) == locked_run_id), None)
+                if locked_record is not None:
+                    by_condition[condition][estimator_mode] = locked_record
+                    continue
+
+            mean_position, _ = _mean_std([_float_or_none(candidate.get("mean_position_error_m")) for candidate in candidates])
+            median_waypoint = _median([_float_or_none(candidate.get("mean_waypoint_error_m")) for candidate in candidates])
+            median_nees = _median([_float_or_none(candidate.get("pose_nees")) for candidate in candidates])
+            waypoint_values = [_float_or_none(candidate.get("mean_waypoint_error_m")) for candidate in candidates]
+            nees_values = [_float_or_none(candidate.get("pose_nees")) for candidate in candidates]
+
+            ranked = sorted(
+                candidates,
+                key=lambda candidate: (
+                    1 if not _required_media_assets_exist(candidate) else 0,
+                    1 if _is_clear_outlier(_float_or_none(candidate.get("mean_waypoint_error_m")), waypoint_values) else 0,
+                    1 if _is_clear_outlier(_float_or_none(candidate.get("pose_nees")), nees_values) else 0,
+                    abs(_float_or_none(candidate.get("mean_position_error_m")) - mean_position)
+                    if _float_or_none(candidate.get("mean_position_error_m")) is not None and mean_position is not None
+                    else 1e9,
+                    abs(_float_or_none(candidate.get("mean_waypoint_error_m")) - median_waypoint)
+                    if _float_or_none(candidate.get("mean_waypoint_error_m")) is not None and median_waypoint is not None
+                    else 1e9,
+                    abs(_float_or_none(candidate.get("pose_nees")) - median_nees)
+                    if _float_or_none(candidate.get("pose_nees")) is not None and median_nees is not None
+                    else 1e9,
+                    abs(int(candidate.get("seed") or 999) - 7),
+                    int(candidate.get("seed") or 999),
+                ),
+            )
+            by_condition[condition][estimator_mode] = ranked[0]
     return by_condition
 
 
@@ -511,7 +582,7 @@ def generate_second_pass_suite_artifacts(
         encoding="utf-8",
     )
 
-    representative = _representative_runs(records)
+    representative = _representative_runs(records, lock_payload=lock_payload)
     nominal_visual = representative.get("nominal_full_anchor", {}).get("visual")
     nominal_fused = representative.get("nominal_full_anchor", {}).get("fused")
     dropout_visual = representative.get("intermittent_anchor", {}).get("visual")

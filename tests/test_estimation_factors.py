@@ -147,7 +147,7 @@ def test_discrete_imu_integration_matches_repo_convention_exactly() -> None:
     )
     assert np.allclose(result["final_rotation_cw"], np.eye(3), atol=1e-12)
     assert np.allclose(result["final_velocity_world_mps"], np.array([0.0, 0.0, -1.762], dtype=np.float64), atol=1e-12)
-    assert np.allclose(result["final_position_world_m"], np.array([0.0, 0.0, -0.3524], dtype=np.float64), atol=1e-12)
+    assert np.allclose(result["final_position_world_m"], np.array([0.0, 0.0, -0.1762], dtype=np.float64), atol=1e-12)
 
     delta = preintegrate_imu_samples(
         samples,
@@ -158,7 +158,7 @@ def test_discrete_imu_integration_matches_repo_convention_exactly() -> None:
     assert math.isclose(delta.delta_time_s, 0.2, rel_tol=0.0, abs_tol=1e-12)
     assert np.allclose(delta.delta_rotation_cw, np.eye(3), atol=1e-12)
     assert np.allclose(delta.delta_velocity_world_mps, np.array([0.0, 0.0, -1.762], dtype=np.float64), atol=1e-12)
-    assert np.allclose(delta.delta_position_world_m, np.array([0.0, 0.0, -0.3524], dtype=np.float64), atol=1e-12)
+    assert np.allclose(delta.delta_position_world_m, np.array([0.0, 0.0, -0.1762], dtype=np.float64), atol=1e-12)
 
 
 def test_camera_and_imu_pose_transforms_are_inverse_consistent() -> None:

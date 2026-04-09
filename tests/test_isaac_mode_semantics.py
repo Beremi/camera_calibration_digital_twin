@@ -147,3 +147,58 @@ def test_control_targets_are_mapped_by_delta_into_ee_frame(tmp_path) -> None:
     )
 
     assert np.allclose(ik_target, np.array([0.66, -0.26, 1.15], dtype=np.float64))
+
+
+def test_imu_sampling_uses_camera_pose_when_available(tmp_path) -> None:
+    class _CameraBinding:
+        def get_world_pose(self):
+            return np.array([0.55, -0.40, 1.16], dtype=np.float64), np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+
+    class _Tick:
+        sim_time_s = 0.01
+        dt_s = 0.01
+
+    class _ImuBinding:
+        def __init__(self):
+            self.positions: list[np.ndarray] = []
+            self.rotations: list[np.ndarray] = []
+
+        def due_ticks(self, sim_time_s: float):
+            assert abs(sim_time_s - 0.01) < 1e-9
+            return [_Tick()]
+
+        def sample(self, *, tick, timestamps, position_world_m, rotation_wi):
+            del tick, timestamps
+            self.positions.append(np.asarray(position_world_m, dtype=np.float64).reshape(3))
+            self.rotations.append(np.asarray(rotation_wi, dtype=np.float64).reshape(3, 3))
+            return IsaacImuPacket(
+                packet_index=0,
+                timestamp_s=0.01,
+                sim_time_s=0.01,
+                dt_s=0.01,
+                wx=0.0,
+                wy=0.0,
+                wz=0.0,
+                ax=0.0,
+                ay=0.0,
+                az=9.81,
+                imu_frame="I",
+                imu_semantics="specific_force",
+                noise_preset="ideal",
+            )
+
+    runtime = create_runtime(_bootstrap(tmp_path, estimator_mode="fused", controller_mode="closed-loop"))
+    runtime._sim_time_s = 0.01
+    runtime._camera_binding = _CameraBinding()
+    runtime._imu_binding = _ImuBinding()
+
+    packets = runtime._process_imu(
+        runtime._timestamps(),
+        ee_position_world_m=np.array([0.60, -0.30, 0.46], dtype=np.float64),
+        ee_orientation_wxyz=np.array([0.92387953, 0.0, 0.38268343, 0.0], dtype=np.float64),
+    )
+
+    assert len(packets) == 1
+    assert len(runtime._imu_binding.positions) == 1
+    assert np.allclose(runtime._imu_binding.positions[0], np.array([0.55, -0.40, 1.16], dtype=np.float64))
+    assert np.allclose(runtime._imu_binding.rotations[0], np.eye(3), atol=1e-9)

@@ -71,11 +71,33 @@ def _condition_overrides(condition: str, args: argparse.Namespace) -> dict[str, 
     raise ValueError(f"Unsupported second-pass draft condition: {condition}")
 
 
-def _fused_selection(lock_payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+def _selection_settings(lock_payload: dict[str, Any], *, estimator_mode: str) -> tuple[str, dict[str, Any], dict[str, bool]]:
     draft_selection = dict(lock_payload.get("draft_selection", {}))
-    backend = str(draft_selection.get("fused_nominal_backend", "lightweight"))
-    covariance_scales = dict(draft_selection.get("fused_nominal_covariance_scales", {}))
-    return backend, covariance_scales
+    if estimator_mode == "fused":
+        backend = str(draft_selection.get("fused_nominal_backend", "lightweight"))
+        covariance_scales = dict(draft_selection.get("fused_nominal_covariance_scales", {}))
+        runtime_switches = dict(
+            draft_selection.get(
+                "fused_nominal_runtime_switches",
+                {
+                    "use_aux_tags_in_filter": True,
+                    "use_aux_tags_in_smoother": True,
+                    "use_aux_map_for_control": True,
+                },
+            )
+        )
+        return backend, covariance_scales, runtime_switches
+    runtime_switches = dict(
+        draft_selection.get(
+            "visual_runtime_switches",
+            {
+                "use_aux_tags_in_filter": True,
+                "use_aux_tags_in_smoother": True,
+                "use_aux_map_for_control": True,
+            },
+        )
+    )
+    return "lightweight", {}, runtime_switches
 
 
 def _run_command(
@@ -86,6 +108,7 @@ def _run_command(
     seed: int,
     smoother_backend: str,
     covariance_scales: dict[str, Any],
+    runtime_switches: dict[str, bool],
 ) -> list[str]:
     overrides = _condition_overrides(condition, args)
     run_id = second_pass_draft_run_id(condition, estimator_mode, seed)
@@ -120,13 +143,25 @@ def _run_command(
         "closed-loop",
         "--bootstrap-control-policy",
         "hold_until_first_detection",
-        "--use-aux-tags-in-filter",
-        "--use-aux-tags-in-smoother",
-        "--use-aux-map-for-control",
         "--smoother-backend",
         smoother_backend,
         "--no-promote-global-latest",
     ]
+    command.append(
+        "--use-aux-tags-in-filter"
+        if bool(runtime_switches.get("use_aux_tags_in_filter", True))
+        else "--no-use-aux-tags-in-filter"
+    )
+    command.append(
+        "--use-aux-tags-in-smoother"
+        if bool(runtime_switches.get("use_aux_tags_in_smoother", True))
+        else "--no-use-aux-tags-in-smoother"
+    )
+    command.append(
+        "--use-aux-map-for-control"
+        if bool(runtime_switches.get("use_aux_map_for_control", True))
+        else "--no-use-aux-map-for-control"
+    )
     visibility_config = overrides["visibility_config"]
     if visibility_config not in (None, ""):
         command.extend(["--visibility-config", str(visibility_config)])
@@ -160,13 +195,14 @@ def run_suite(args: argparse.Namespace) -> dict[str, Any]:
     output_root = Path(args.output_root).resolve()
     lock_path = Path(args.lock_path).resolve()
     lock_payload = _load_json(lock_path)
-    fused_backend, fused_scales = _fused_selection(lock_payload)
     planned_runs = []
     executed_runs = []
     for condition in args.conditions:
         for estimator_mode in ("visual", "fused"):
-            smoother_backend = fused_backend if estimator_mode == "fused" else "lightweight"
-            covariance_scales = fused_scales if estimator_mode == "fused" else {}
+            smoother_backend, covariance_scales, runtime_switches = _selection_settings(
+                lock_payload,
+                estimator_mode=estimator_mode,
+            )
             for seed in args.seeds:
                 run_id = second_pass_draft_run_id(condition, estimator_mode, seed)
                 run_dir = output_root / run_id
@@ -177,6 +213,7 @@ def run_suite(args: argparse.Namespace) -> dict[str, Any]:
                         "estimator_mode": estimator_mode,
                         "seed": int(seed),
                         "smoother_backend": smoother_backend,
+                        "runtime_switches": runtime_switches,
                     }
                 )
                 metrics_path = run_dir / "analysis" / "metrics.json"
@@ -190,6 +227,7 @@ def run_suite(args: argparse.Namespace) -> dict[str, Any]:
                             seed=int(seed),
                             smoother_backend=smoother_backend,
                             covariance_scales=covariance_scales,
+                            runtime_switches=runtime_switches,
                         ),
                         cwd=str(REPO_ROOT),
                         check=True,
@@ -200,20 +238,39 @@ def run_suite(args: argparse.Namespace) -> dict[str, Any]:
                         check=True,
                     )
                     executed_runs.append(run_id)
-    suite_payload = generate_second_pass_suite_artifacts(
-        output_root,
-        lock_path=lock_path,
-        regenerate_run_artifacts=False,
-        artifact_source="latest_second_pass_suite",
+    requested_conditions = {str(condition) for condition in args.conditions}
+    requested_seeds = {int(seed) for seed in args.seeds}
+    full_suite_requested = requested_conditions == set(DEFAULT_SECOND_PASS_CONDITIONS) and requested_seeds == set(
+        int(seed) for seed in DEFAULT_SECOND_PASS_DRAFT_SEEDS
     )
-    if bool(args.update_lock):
+    suite_payload: dict[str, Any]
+    suite_summary: dict[str, Any]
+    if full_suite_requested:
+        suite_payload = generate_second_pass_suite_artifacts(
+            output_root,
+            lock_path=lock_path,
+            regenerate_run_artifacts=False,
+            artifact_source="latest_second_pass_suite",
+        )
+        suite_summary = _load_json(Path(suite_payload["summary_json"]).resolve())
+    else:
+        suite_payload = {
+            "skipped": True,
+            "reason": "partial_selection",
+            "requested_conditions": sorted(requested_conditions),
+            "requested_seeds": sorted(requested_seeds),
+        }
+        suite_summary = {}
+    if bool(args.update_lock) and full_suite_requested:
         draft_selection = lock_payload.setdefault("draft_selection", {})
         draft_selection["suite_run_ids"] = [str(item["run_id"]) for item in planned_runs]
+        draft_selection["representative_run_ids"] = dict(suite_summary.get("representative_runs", {}))
         _write_json(lock_path, lock_payload)
     return {
         "planned_runs": planned_runs,
         "executed_runs": executed_runs,
         "suite": suite_payload,
+        "full_suite_requested": full_suite_requested,
     }
 
 
@@ -221,7 +278,6 @@ def main() -> int:
     args = parse_args()
     if args.dry_run:
         lock_payload = _load_json(Path(args.lock_path).resolve())
-        fused_backend, _ = _fused_selection(lock_payload)
         payload = {
             "planned_runs": [
                 {
@@ -229,7 +285,8 @@ def main() -> int:
                     "condition": condition,
                     "estimator_mode": estimator_mode,
                     "seed": int(seed),
-                    "smoother_backend": fused_backend if estimator_mode == "fused" else "lightweight",
+                    "smoother_backend": _selection_settings(lock_payload, estimator_mode=estimator_mode)[0],
+                    "runtime_switches": _selection_settings(lock_payload, estimator_mode=estimator_mode)[2],
                 }
                 for condition in args.conditions
                 for estimator_mode in ("visual", "fused")

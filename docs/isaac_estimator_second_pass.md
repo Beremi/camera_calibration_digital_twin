@@ -1,11 +1,43 @@
 # Isaac Estimator Second Pass
 
+## Current Work Packet
+
+- current commit SHA: `4c565ae`
+- preserved pre-draft checkpoint: `b3f23c9`
+- current milestone: `second-pass first-draft artifact closure`
+
 This branch continues from the frozen first-pass publication milestone tagged
 `isaac-first-pass-freeze`.
 
 The first-pass suite under `output/isaac_runs/latest_first_pass_suite` remains
 the immutable publication baseline. This branch is for estimator-quality
 diagnosis and repair only.
+
+## Current Closure Status
+
+The second-pass first-draft closure attempt is currently blocked by the fused
+intermittent-anchor condition, not by publication plumbing.
+
+What is true right now:
+
+- the full 18-run draft suite was executed once under the provisional
+  anchor-only fused lock
+- that suite showed catastrophic fused intermittent-anchor instability while
+  visual remained well behaved
+- two fused-path fixes have since landed during this work packet:
+  - the inertial helper now uses standard constant-acceleration position
+    kinematics instead of the old doubled position update
+  - the runtime now samples synthetic IMU motion from the live camera pose
+    instead of the end-effector pose
+- those fixes improved fused nominal seed-`007` anchor-only accuracy to
+  `0.01556 m` mean position error with sane calibration, but the
+  intermittent-anchor fused rerun is still catastrophic at about `248.74 m`
+  mean position error and `1.42e7` pose NEES
+
+The practical conclusion is simple: the branch is not blocked on tables,
+figures, or media anymore. It is blocked on one remaining fused runtime or
+mechanization defect that still makes the dropout condition scientifically
+indefensible for the first draft.
 
 ## Preserved Checkpoint
 
@@ -170,3 +202,32 @@ draft, not a broad benchmark campaign. The intended draft bundle is:
   `report_tex/second_pass_publication_draft.tex`
 - one local-only presentation bundle under
   `output/isaac_runs/latest_second_pass_suite/presentation/`
+
+## Current Draft-Lock Note
+
+The current provisional draft lock now points to the best real fused nominal
+candidate seen so far:
+
+- backend: `lightweight`
+- reference run:
+  `second_pass_tuning_anchor_only_lightweight_seed_007_imu_8p0_vision_4p0_post_1p0_gyro_default_accel_default`
+- runtime switches:
+  - `use_aux_tags_in_filter = false`
+  - `use_aux_tags_in_smoother = false`
+  - `use_aux_map_for_control = false`
+
+That choice is provisional rather than celebratory. It is the strongest real
+seed-`007` fused nominal configuration collected so far, but the nominal
+three-seed comparison still shows fused trailing visual on both mean position
+error and mean waypoint error even while fused remains well calibrated
+(`coverage ~= 99.6%`, `pose NEES ~= 4.2`). The remaining closure question is
+therefore not whether the branch is stable enough to benchmark, but whether the
+final nominal backend/weighting choice can narrow that gap enough for the first
+draft claim to be strong on the clean condition.
+
+That note now needs one explicit caveat: the current lock and suite membership
+should be treated as diagnostic rather than draft-final. The lock still points
+to the best nominal fused candidate collected so far, but the dropout condition
+remains unresolved even after the latest fused propagation fixes. The next
+closure move is therefore a rerun of the draft suite only after the fused
+intermittent-anchor path is numerically sane.

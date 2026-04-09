@@ -302,8 +302,6 @@ def _candidate_priority(row: dict[str, Any], visual_reference: dict[str, float |
 
 
 def _build_candidates(args: argparse.Namespace) -> list[dict[str, Any]]:
-    gyro_scales = [None] if not args.gyro_process_covariance_scales else [None] + list(args.gyro_process_covariance_scales)
-    accel_scales = [None] if not args.accel_process_covariance_scales else [None] + list(args.accel_process_covariance_scales)
     rows: list[dict[str, Any]] = []
     for imu_scale in args.imu_process_covariance_scales:
         for vision_scale in args.vision_covariance_scales:
@@ -320,6 +318,21 @@ def _build_candidates(args: argparse.Namespace) -> list[dict[str, Any]]:
                         "accel_process_covariance_scale": None,
                     }
                 )
+    return rows
+
+
+def _build_split_candidates(
+    args: argparse.Namespace,
+    *,
+    base_anchor_row: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    gyro_scales = [None] if not args.gyro_process_covariance_scales else [None] + list(args.gyro_process_covariance_scales)
+    accel_scales = [None] if not args.accel_process_covariance_scales else [None] + list(args.accel_process_covariance_scales)
+    if len(gyro_scales) == 1 and len(accel_scales) == 1:
+        return []
+    if base_anchor_row is None:
+        return []
+    rows: list[dict[str, Any]] = []
     for gyro_scale in gyro_scales:
         for accel_scale in accel_scales:
             if gyro_scale is None and accel_scale is None:
@@ -329,14 +342,36 @@ def _build_candidates(args: argparse.Namespace) -> list[dict[str, Any]]:
                     "phase": "anchor_only",
                     "aux_enabled": False,
                     "smoother_backend": "lightweight",
-                    "imu_process_covariance_scale": 4.0,
-                    "vision_covariance_scale": 1.0,
-                    "post_relocalization_covariance_scale": 1.0,
+                    "imu_process_covariance_scale": float(base_anchor_row["imu_process_covariance_scale"]),
+                    "vision_covariance_scale": float(base_anchor_row["vision_covariance_scale"]),
+                    "post_relocalization_covariance_scale": float(base_anchor_row["post_relocalization_covariance_scale"]),
                     "gyro_process_covariance_scale": gyro_scale,
                     "accel_process_covariance_scale": accel_scale,
                 }
             )
     return rows
+
+
+def _phase_runtime_switches(phase: str) -> dict[str, bool]:
+    if phase == "anchor_only":
+        return {
+            "use_aux_tags_in_filter": False,
+            "use_aux_tags_in_smoother": False,
+            "use_aux_map_for_control": False,
+        }
+    if phase == "aux_for_control":
+        return {
+            "use_aux_tags_in_filter": True,
+            "use_aux_tags_in_smoother": True,
+            "use_aux_map_for_control": True,
+        }
+    if phase == "aux_estimation_only":
+        return {
+            "use_aux_tags_in_filter": True,
+            "use_aux_tags_in_smoother": True,
+            "use_aux_map_for_control": False,
+        }
+    raise ValueError(f"Unsupported tuning phase: {phase}")
 
 
 def run_tuning(args: argparse.Namespace) -> dict[str, Any]:
@@ -348,7 +383,8 @@ def run_tuning(args: argparse.Namespace) -> dict[str, Any]:
     tuning_dir.mkdir(parents=True, exist_ok=True)
 
     candidate_rows = []
-    for candidate in _build_candidates(args):
+    base_candidates = _build_candidates(args)
+    for candidate in base_candidates:
         candidate_rows.append(
             _ensure_candidate(
                 args,
@@ -363,6 +399,30 @@ def run_tuning(args: argparse.Namespace) -> dict[str, Any]:
             )
         )
     completed_anchor_rows = [row for row in candidate_rows if not bool(row.get("missing"))]
+    best_anchor_global = None if not completed_anchor_rows else min(
+        completed_anchor_rows,
+        key=lambda row: _candidate_priority(row, visual_reference),
+    )
+    split_candidates = _build_split_candidates(args, base_anchor_row=best_anchor_global)
+    for candidate in split_candidates:
+        candidate_rows.append(
+            _ensure_candidate(
+                args,
+                phase=str(candidate["phase"]),
+                backend=str(candidate["smoother_backend"]),
+                aux_enabled=bool(candidate["aux_enabled"]),
+                imu_scale=float(candidate["imu_process_covariance_scale"]),
+                vision_scale=float(candidate["vision_covariance_scale"]),
+                post_scale=float(candidate["post_relocalization_covariance_scale"]),
+                gyro_scale=_float_or_none(candidate.get("gyro_process_covariance_scale")),
+                accel_scale=_float_or_none(candidate.get("accel_process_covariance_scale")),
+            )
+        )
+    completed_anchor_rows = [
+        row
+        for row in candidate_rows
+        if not bool(row.get("missing")) and str(row.get("phase", "")) == "anchor_only"
+    ]
     if completed_anchor_rows:
         best_anchor = min(completed_anchor_rows, key=lambda row: _candidate_priority(row, visual_reference))
         for backend in ("lightweight", "windowed_ba"):
@@ -380,16 +440,39 @@ def run_tuning(args: argparse.Namespace) -> dict[str, Any]:
                 )
             )
     completed_rows = [row for row in candidate_rows if not bool(row.get("missing"))]
-    selected = None if not completed_rows else min(completed_rows, key=lambda row: _candidate_priority(row, visual_reference))
+    completed_aux_rows = [
+        row
+        for row in completed_rows
+        if str(row.get("phase", "")) == "aux_for_control"
+    ]
+    selection_pool = completed_aux_rows if completed_aux_rows else completed_anchor_rows
+    selected = None if not selection_pool else min(selection_pool, key=lambda row: _candidate_priority(row, visual_reference))
+    ranked_candidates = sorted(selection_pool, key=lambda row: _candidate_priority(row, visual_reference))
+    top_candidates = ranked_candidates[:3]
 
     summary = {
         "rows": candidate_rows,
         "visual_reference": visual_reference,
         "selected_run_id": None if selected is None else str(selected["run_id"]),
         "selected": selected,
+        "selection_pool_phase": "aux_for_control" if completed_aux_rows else "anchor_only",
+        "selected_backend": None if selected is None else str(selected["smoother_backend"]),
+        "selected_covariance_scales": None
+        if selected is None
+        else {
+            "vision_covariance_scale": float(selected["vision_covariance_scale"]),
+            "anchor_vision_covariance_scale": None,
+            "aux_vision_covariance_scale": None,
+            "imu_process_covariance_scale": float(selected["imu_process_covariance_scale"]),
+            "gyro_process_covariance_scale": _float_or_none(selected.get("gyro_process_covariance_scale")),
+            "accel_process_covariance_scale": _float_or_none(selected.get("accel_process_covariance_scale")),
+            "post_relocalization_covariance_scale": float(selected["post_relocalization_covariance_scale"]),
+        },
+        "top_candidates": top_candidates,
     }
     _write_csv(tuning_dir / "summary.csv", candidate_rows)
     _write_json(tuning_dir / "summary.json", summary)
+    _write_csv(tuning_dir / "top_fused_candidates.csv", top_candidates)
 
     if bool(args.update_lock) and selected is not None:
         draft_selection = lock_payload.setdefault("draft_selection", {})
@@ -404,12 +487,14 @@ def run_tuning(args: argparse.Namespace) -> dict[str, Any]:
             "accel_process_covariance_scale": _float_or_none(selected.get("accel_process_covariance_scale")),
             "post_relocalization_covariance_scale": float(selected["post_relocalization_covariance_scale"]),
         }
+        draft_selection["fused_nominal_runtime_switches"] = _phase_runtime_switches(str(selected["phase"]))
         draft_selection["tuning_summary_path"] = str((tuning_dir / "summary.json").resolve())
         _write_json(lock_path, lock_payload)
 
     return {
         "summary_json": str((tuning_dir / "summary.json").resolve()),
         "summary_csv": str((tuning_dir / "summary.csv").resolve()),
+        "top_candidates_csv": str((tuning_dir / "top_fused_candidates.csv").resolve()),
         "selected_run_id": None if selected is None else str(selected["run_id"]),
         "selected": selected,
         "completed_run_count": len(completed_rows),

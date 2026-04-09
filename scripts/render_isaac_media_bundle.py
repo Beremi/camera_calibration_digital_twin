@@ -11,6 +11,8 @@ from typing import Any
 import cv2
 import numpy as np
 
+from calib_sim.reporting.isaac_second_pass_suite import DEFAULT_SECOND_PASS_DRAFT_LOCK
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-root", default="output/isaac_runs")
+    parser.add_argument("--lock-path", default=str(DEFAULT_SECOND_PASS_DRAFT_LOCK))
     parser.add_argument("--hero-config", default="config/isaac/media/hero_capture.yaml")
     parser.add_argument("--comparison-config", default="config/isaac/media/comparison_capture.yaml")
     parser.add_argument("--dropout-config", default="config/isaac/media/dropout_capture.yaml")
@@ -28,6 +31,10 @@ def parse_args() -> argparse.Namespace:
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _first_rgb_frames(run_dir: Path, *, max_frames: int) -> list[np.ndarray]:
@@ -135,7 +142,25 @@ def _frame_sequence_or_fallback(run_dir: Path, *, fallback_image: np.ndarray | N
     return [fallback_image.copy() for _ in range(max(1, max_frames // 6))]
 
 
-def render_media_bundle(output_root: Path, *, fps: int, max_frames: int) -> dict[str, Any]:
+def _pick_frame(frames: list[np.ndarray], index: int) -> np.ndarray:
+    if not frames:
+        return np.full((720, 1280, 3), 235, dtype=np.uint8)
+    bounded_index = max(0, min(index, len(frames) - 1))
+    return frames[bounded_index]
+
+
+def _title_card(size: tuple[int, int], *, title: str, bullets: list[str]) -> np.ndarray:
+    height, width = size
+    canvas = np.full((height, width, 3), (18, 26, 38), dtype=np.uint8)
+    cv2.putText(canvas, title, (56, 96), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (244, 244, 244), 2, cv2.LINE_AA)
+    y = 162
+    for bullet in bullets:
+        cv2.putText(canvas, f"- {bullet}", (72, y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (225, 230, 236), 2, cv2.LINE_AA)
+        y += 54
+    return canvas
+
+
+def render_media_bundle(output_root: Path, *, lock_path: Path, fps: int, max_frames: int) -> dict[str, Any]:
     suite_summary_path = output_root / "latest_second_pass_suite" / "analysis" / "suite_summary.json"
     suite_summary = _load_json(suite_summary_path)
     presentation_dir = output_root / "latest_second_pass_suite" / "presentation"
@@ -173,6 +198,20 @@ def render_media_bundle(output_root: Path, *, fps: int, max_frames: int) -> dict
     cv2.imwrite(str(presentation_dir / "hero_still_main.png"), hero_video_frames[0])
     if nominal_compare is not None:
         cv2.imwrite(str(presentation_dir / "hero_still_compare.png"), nominal_compare)
+    scene_overview_still = hero_video_frames[min(len(hero_video_frames) // 4, len(hero_video_frames) - 1)]
+    cv2.imwrite(str(presentation_dir / "scene_overview_still.png"), scene_overview_still)
+    phone_view_still = _single_frame_with_inset(
+        _pick_frame(hero_frames, max(0, len(hero_frames) // 3)),
+        title="Phone View With Nominal Path Context",
+        inset=nominal_compare,
+        footer_lines=[
+            f"run: {nominal_fused_id}",
+            "view: phone RGB with top-down trajectory inset",
+            "condition: nominal_full_anchor",
+            "what to notice: stable anchor-driven closed-loop tracking",
+        ],
+    )
+    cv2.imwrite(str(presentation_dir / "phone_view_still.png"), phone_view_still)
 
     def comparison_video(
         left_run_id: str | None,
@@ -238,30 +277,136 @@ def render_media_bundle(output_root: Path, *, fps: int, max_frames: int) -> dict
     ]
     _write_video(presentation_dir / "observer_phone_diagnostics.mp4", diagnostics_frames, fps=fps)
 
+    dropout_frames = _frame_sequence_or_fallback(output_root / dropout_fused_id, fallback_image=dropout_compare, max_frames=max_frames)
+    dropout_still = _single_frame_with_inset(
+        _pick_frame(dropout_frames, max(0, len(dropout_frames) // 2)),
+        title="Anchor Suppression Interval",
+        inset=dropout_compare,
+        footer_lines=[
+            f"run: {dropout_fused_id}",
+            "condition: intermittent_anchor",
+            "anchor updates: deterministically suppressed in scheduled windows",
+            "what to notice: fused estimate remains controllable through dropout",
+        ],
+    )
+    cv2.imwrite(str(presentation_dir / "dropout_still.png"), dropout_still)
+
+    stress_frames = _frame_sequence_or_fallback(output_root / stress_fused_id, fallback_image=stress_compare, max_frames=max_frames)
+    servo_stress_still = _single_frame_with_inset(
+        _pick_frame(stress_frames, max(0, len(stress_frames) // 2)),
+        title="Servo Stress Exact-Positioning View",
+        inset=stress_compare,
+        footer_lines=[
+            f"run: {stress_fused_id}",
+            "condition: servo_stress",
+            "overlay: command vs realized end-effector behavior",
+            "what to notice: control under lag, deadband, backlash, and dropouts",
+        ],
+    )
+    cv2.imwrite(str(presentation_dir / "servo_stress_still.png"), servo_stress_still)
+
+    teaser_frames: list[np.ndarray] = []
+    if hero_video_frames:
+        teaser_frames.extend([hero_video_frames[0].copy()] * max(10, fps))
+    teaser_frames.extend(
+        [
+            _title_card(
+                (720, 1280),
+                title="Anchored Visual vs Visual-Inertial Closed-Loop Tracking",
+                bullets=[
+                    "Nominal full-anchor condition",
+                    "Deterministic intermittent-anchor dropout",
+                    "Servo stress under uncertain actuation",
+                ],
+            )
+        ]
+        * max(8, fps // 2)
+    )
+    for source in (nominal_compare, dropout_compare, stress_compare, smoother_compare):
+        if source is None:
+            continue
+        frame = _single_frame_with_inset(
+            source,
+            title="Second-Pass Draft Highlight",
+            inset=None,
+            footer_lines=[
+                "Visual vs fused comparison",
+                "Representative condition figure from latest_second_pass_suite",
+            ],
+        )
+        teaser_frames.extend([frame] * max(10, fps))
+    teaser_frames.extend(
+        [
+            _title_card(
+                (720, 1280),
+                title="Current Takeaway",
+                bullets=[
+                    "Fusion is tuned to be competitive on the clean nominal case",
+                    "Intermittent visibility is the main regime to watch",
+                    "Remaining weakness: residual and calibration quality under harder conditions",
+                ],
+            )
+        ]
+        * max(10, fps)
+    )
+    _write_video(presentation_dir / "paper_teaser_second_pass.mp4", teaser_frames, fps=fps)
+
     manifest = {
         "suite_summary_json": str(suite_summary_path.resolve()),
+        "representative_runs": representative,
         "videos": {
             "hero_demo": str((presentation_dir / "hero_demo.mp4").resolve()),
             "visual_vs_fused_nominal": str((presentation_dir / "visual_vs_fused_nominal.mp4").resolve()),
             "visual_vs_fused_dropout": str((presentation_dir / "visual_vs_fused_dropout.mp4").resolve()),
             "actuation_stress_demo": str((presentation_dir / "actuation_stress_demo.mp4").resolve()),
             "observer_phone_diagnostics": str((presentation_dir / "observer_phone_diagnostics.mp4").resolve()),
+            "paper_teaser_second_pass": str((presentation_dir / "paper_teaser_second_pass.mp4").resolve()),
         },
         "stills": {
             "hero_still_main": str((presentation_dir / "hero_still_main.png").resolve()),
             "hero_still_compare": str((presentation_dir / "hero_still_compare.png").resolve()),
+            "scene_overview_still": str((presentation_dir / "scene_overview_still.png").resolve()),
+            "phone_view_still": str((presentation_dir / "phone_view_still.png").resolve()),
+            "dropout_still": str((presentation_dir / "dropout_still.png").resolve()),
+            "servo_stress_still": str((presentation_dir / "servo_stress_still.png").resolve()),
+        },
+        "captions": {
+            "hero_demo": "Overview of the anchored fused closed-loop nominal run with path and diagnostics overlays.",
+            "visual_vs_fused_nominal": "Nominal full-anchor split-screen comparison of visual and fused closed-loop tracking.",
+            "visual_vs_fused_dropout": "Intermittent-anchor split-screen comparison highlighting deterministic anchor-update suppression.",
+            "actuation_stress_demo": "Comparison of nominal fused behavior and the servo_stress actuation preset.",
+            "observer_phone_diagnostics": "Observer view, phone-view proxy, and smoother/residual diagnostics for the representative fused nominal run.",
+            "paper_teaser_second_pass": "Short stitched overview for talks or lab review.",
         },
     }
-    (presentation_dir / "presentation_manifest.json").write_text(
+    manifest_path = presentation_dir / "presentation_manifest.json"
+    manifest_path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    if lock_path.exists():
+        lock_payload = _load_json(lock_path)
+        draft_selection = lock_payload.setdefault("draft_selection", {})
+        representative_run_ids = [
+            str(run_id)
+            for runs_by_estimator in representative.values()
+            for run_id in runs_by_estimator.values()
+            if run_id
+        ]
+        draft_selection["media_source_run_ids"] = representative_run_ids
+        draft_selection["presentation_manifest_path"] = str(manifest_path.resolve())
+        _write_json(lock_path, lock_payload)
     return manifest
 
 
 def main() -> int:
     args = parse_args()
-    payload = render_media_bundle(Path(args.output_root).resolve(), fps=int(args.fps), max_frames=int(args.max_frames))
+    payload = render_media_bundle(
+        Path(args.output_root).resolve(),
+        lock_path=Path(args.lock_path).resolve(),
+        fps=int(args.fps),
+        max_frames=int(args.max_frames),
+    )
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
 

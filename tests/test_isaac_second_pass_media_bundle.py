@@ -65,4 +65,5 @@ def test_second_pass_media_bundle_and_dashboard_build(tmp_path: Path) -> None:
     assert Path(dashboard_payload["dashboard_path"]).exists()
     html = Path(dashboard_payload["dashboard_path"]).read_text(encoding="utf-8")
     assert "Key Findings" in html
+    assert "Control Success" in html
     assert "Remaining weakness" in html

@@ -39,6 +39,8 @@ def test_report_generation_writes_metrics_tables_and_figures(tmp_path) -> None:
     assert metrics["counts"]["camera_frames"] == 1
     assert metrics["counts"]["imu_packets"] == 2
     assert metrics["counts"]["controller_diagnostics"] == 1
+    assert metrics["control_success"]["waypoint_success_fraction_5cm"] == 1.0
+    assert metrics["control_success"]["mean_commanded_realized_path_deviation_m"] == 0.0
     assert payload["complete"] is False
     assert payload["latest_any_link"] is not None
     assert payload["latest_complete_link"] is None

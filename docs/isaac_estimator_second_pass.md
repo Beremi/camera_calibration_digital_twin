@@ -2,11 +2,12 @@
 
 ## Current Work Packet
 
-- current packet head: `6ec3cec`
-- previous packet head: `6ef8807`
+- canonical science packet head: `a18a7aa`
+- prior Draft v0 packaging milestone: `6ec3cec`
+- previous science rerun packet head: `a1b0d4f`
 - working baseline commit SHA: `334e5a2`
 - preserved pre-draft checkpoint: `b3f23c9`
-- current milestone: `first usable second-pass draft package ready for review`
+- current milestone: `zig-zag stabilization package ready for review`
 - control dropout bundle: `output/isaac_runs/latest_second_pass_dropout_debug`
 
 This branch continues from the frozen first-pass publication milestone tagged
@@ -19,12 +20,13 @@ diagnosis and repair only.
 ## Current Closure Status
 
 The estimator-side blocker for the first usable second-pass draft is now
-cleared. The fused intermittent-anchor condition is no longer catastrophic
-under the promoted suppression strategy, the full 18-run suite has been rerun
-from the refreshed draft lock, and the second-pass PDF plus local presentation
-bundle have now been regenerated from those refreshed artifacts. The next work
-on this branch is manuscript polish and claim discipline, not another forced
-estimator-repair packet.
+cleared. The canonical branch package is the five-point zig-zag task promoted
+at `a18a7aa`: the fused intermittent-anchor condition is no longer
+catastrophic under the promoted suppression strategy, the full 18-run zig-zag
+suite has been rerun from the refreshed draft lock, and the second-pass PDF
+plus local presentation bundle have now been regenerated from those refreshed
+artifacts. The next work on this branch is manuscript polish and claim
+discipline, not another estimator-repair packet.
 
 What is true right now:
 
@@ -41,41 +43,41 @@ What is true right now:
 - a focused nominal retune selected the current fused nominal reference:
   - run id:
     `second_pass_tuning_anchor_only_lightweight_seed_007_imu_8p0_vision_2p0_post_2p0_gyro_default_accel_default_supp_gyro_only_gate_10p0_covinfl_8p0`
-  - mean position error: `0.01293 m`
-  - mean waypoint error: `0.02374 m`
+  - mean position error: `0.01268 m`
+  - mean waypoint error: `0.03234 m`
   - empirical 95% coverage: `99.79%`
-  - pose NEES: `4.23`
+  - pose NEES: `4.21`
 - the full 18-run suite has now been rerun from that promoted lock:
   - nominal / fused:
-    - mean position error: `0.01303 m`
-    - mean waypoint error: `0.02293 m`
-    - empirical 95% coverage: `99.72%`
-    - pose NEES: `4.25`
+    - mean position error: `0.01268 m`
+    - mean waypoint error: `0.03234 m`
+    - empirical 95% coverage: `99.79%`
+    - pose NEES: `4.21`
   - nominal / visual:
-    - mean position error: `0.01388 m`
-    - mean waypoint error: `0.01979 m`
+    - mean position error: `0.01379 m`
+    - mean waypoint error: `0.02822 m`
     - empirical 95% coverage: `99.79%`
-    - pose NEES: `5.01`
+    - pose NEES: `4.99`
   - intermittent anchor / fused:
-    - mean position error: `0.03072 m`
-    - mean waypoint error: `0.02250 m`
-    - empirical 95% coverage: `88.82%`
-    - pose NEES: `14.02`
+    - mean position error: `0.03112 m`
+    - mean waypoint error: `0.03208 m`
+    - empirical 95% coverage: `87.01%`
+    - pose NEES: `14.24`
   - intermittent anchor / visual:
-    - mean position error: `0.01983 m`
-    - mean waypoint error: `0.01874 m`
+    - mean position error: `0.01779 m`
+    - mean waypoint error: `0.02826 m`
     - empirical 95% coverage: `90.49%`
-    - pose NEES: `10.56`
+    - pose NEES: `7.90`
   - servo stress / fused:
-    - mean position error: `0.01328 m`
-    - mean waypoint error: `0.02646 m`
+    - mean position error: `0.01261 m`
+    - mean waypoint error: `0.04421 m`
     - empirical 95% coverage: `99.79%`
-    - pose NEES: `4.26`
+    - pose NEES: `4.20`
   - servo stress / visual:
-    - mean position error: `0.01390 m`
-    - mean waypoint error: `0.02366 m`
+    - mean position error: `0.01252 m`
+    - mean waypoint error: `0.03953 m`
     - empirical 95% coverage: `99.79%`
-    - pose NEES: `5.01`
+    - pose NEES: `4.72`
 - there is no catastrophic fused intermittent-anchor row in the refreshed
   suite
 - nominal fused stayed healthy and is within the requested 10% position-error
@@ -91,10 +93,11 @@ What is true right now:
   into the saved run manifest rather than the raw YAML defaults
 
 The practical conclusion is now straightforward: the branch has a credible
-post-fix 18-run science suite, a real fused draft lock, a compiled draft PDF,
-and a local media/dashboard bundle that all point to the same narrower
-stabilization story. Visual remains the stronger waypoint-tracking baseline,
-but the second-pass branch is now publication-usable rather than blocked.
+post-fix 18-run zig-zag science suite, a real fused draft lock, a compiled
+draft PDF, and a local media/dashboard bundle that all point to the same
+narrower stabilization story. Visual remains the stronger waypoint-tracking
+baseline, but the second-pass branch is now publication-usable rather than
+blocked.
 
 ## Preserved Checkpoint
 
@@ -118,6 +121,8 @@ The current review bundle is intentionally small and repo-centered:
   - `docs/isaac_second_pass_key_findings.md`
 - figure/video guidance:
   - `docs/isaac_second_pass_figure_notes.md`
+- frozen evidence tables:
+  - `docs/isaac_second_pass_evidence_tables.json`
 - review manifest:
   - `docs/second_pass_review_manifest.json`
 - draft lock:
@@ -145,6 +150,8 @@ This regenerates:
 - the local media bundle
 - the static dashboard
 - the repo-relative review manifest
+- the evidence tables and control-success summaries consumed by the manuscript
+  and dashboard
 
 ## Artifact Policy
 

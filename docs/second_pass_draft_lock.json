@@ -1,9 +1,10 @@
 {
   "checkpoint": {
+    "canonical_science_packet_commit": "a18a7aa",
     "canonical_seed": 7,
     "classification": "fused_mechanization_or_weighting_bug",
     "commit": "b3f23c9",
-    "current_work_packet_commit": "6ec3cec",
+    "current_work_packet_commit": "a18a7aa",
     "draft_selection_status": "review_bundle_ready",
     "dropout_debug_bundle_dir": "output/isaac_runs/latest_second_pass_dropout_debug",
     "dropout_debug_docs_path": "docs/isaac_second_pass_dropout_debug.md",
@@ -32,10 +33,11 @@
       "second_pass_fused_closed_loop_aux_estimation_only_seed_007",
       "second_pass_visual_closed_loop_aux_for_control_seed_007",
       "second_pass_fused_closed_loop_aux_for_control_seed_007"
-    ]
+    ],
+    "prior_draft_v0_packet_commit": "6ec3cec"
   },
   "draft_selection": {
-    "draft_readiness_note": "The second-pass review bundle is now ready from the refreshed suite artifacts: the promoted fused draft lock, the rebuilt paper PDF, the regenerated dashboard/media bundle, and the review manifest all point to the same stabilization result.",
+    "draft_readiness_note": "The second-pass review bundle is now ready from the refreshed zig-zag suite artifacts: the promoted fused draft lock, the rebuilt paper PDF, the regenerated dashboard/media bundle, the control-success summaries, and the review manifest all point to the same stabilization result.",
     "draft_ready": true,
     "draft_suite_status": "review_bundle_ready",
     "draft_suite_status_reason": "The refreshed second-pass suite, PDF build, dashboard, and local presentation bundle have all been regenerated from the promoted fused draft lock and are ready for review.",

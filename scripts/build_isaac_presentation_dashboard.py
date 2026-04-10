@@ -45,6 +45,7 @@ def build_dashboard(output_root: Path) -> Path:
     captions = dict(presentation_manifest.get("captions", {}))
     stills = dict(presentation_manifest.get("stills", {}))
     runtime_rows = list(suite_summary.get("runtime_rows", []))
+    control_success_rows = list(suite_summary.get("control_success_rows", []))
     representative_runs = dict(suite_summary.get("representative_runs", {}))
 
     def condition_row(condition: str, estimator: str) -> dict:
@@ -96,6 +97,26 @@ def build_dashboard(output_root: Path) -> Path:
         )
 
     remaining_weakness = "<p>The second-pass suite now supports a stabilization story rather than a broad fused win. The remaining weakness is practical: visual still leads on waypoint error, and intermittent-anchor fused, while no longer catastrophic, does not yet outperform visual on the current error metrics.</p>"
+
+    control_rows_html = "\n".join(
+        [
+            "<tr>"
+            + "".join(
+                f"<td>{value}</td>"
+                for value in (
+                    row.get("condition_label", ""),
+                    row.get("estimator_mode", ""),
+                    f"{float(row['waypoint_success_fraction_1cm']) * 100.0:.1f}" if row.get("waypoint_success_fraction_1cm") is not None else "",
+                    f"{float(row['waypoint_success_fraction_2cm']) * 100.0:.1f}" if row.get("waypoint_success_fraction_2cm") is not None else "",
+                    f"{float(row['waypoint_success_fraction_5cm']) * 100.0:.1f}" if row.get("waypoint_success_fraction_5cm") is not None else "",
+                    f"{float(row['mean_commanded_realized_path_deviation_m']):.3f}" if row.get("mean_commanded_realized_path_deviation_m") is not None else "",
+                    f"{float(row['dropped_command_duration_s']):.3f}" if row.get("dropped_command_duration_s") is not None else "",
+                )
+            )
+            + "</tr>"
+            for row in control_success_rows
+        ]
+    )
 
     rows_html = "\n".join(
         [
@@ -160,6 +181,7 @@ def build_dashboard(output_root: Path) -> Path:
                 "draft_actuation_stress_table.csv",
                 "draft_uncertainty_table.csv",
                 "draft_map_quality_table.csv",
+                "control_success_summary.csv",
                 "suite_summary.json",
             )
             if (analysis_dir / name).exists()
@@ -202,6 +224,25 @@ def build_dashboard(output_root: Path) -> Path:
     {finding_box("servo_stress", "Servo stress")}
     <section class="finding"><h3>Remaining weakness</h3>{remaining_weakness}</section>
   </div>
+
+  <h2>Control Success</h2>
+  <p class="muted">These control-facing metrics complement the estimator tables by asking whether the camera actually reaches the zig-zag waypoints within tighter spatial tolerances and how closely the realized end-effector path follows the commanded anchored path.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Condition</th>
+        <th>Estimator</th>
+        <th>1 cm success [%]</th>
+        <th>2 cm success [%]</th>
+        <th>5 cm success [%]</th>
+        <th>Mean EE path dev [m]</th>
+        <th>Dropped cmd dur [s]</th>
+      </tr>
+    </thead>
+    <tbody>
+      {control_rows_html}
+    </tbody>
+  </table>
 
   <h2>Hero Stills</h2>
   <div class="grid">

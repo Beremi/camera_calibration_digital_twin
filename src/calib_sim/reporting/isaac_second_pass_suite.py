@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+import re
 import shutil
 from typing import Any
 
@@ -20,6 +21,8 @@ from calib_sim.reporting import (
 
 DEFAULT_SECOND_PASS_DRAFT_LOCK = Path("docs/second_pass_draft_lock.json")
 DEFAULT_SECOND_PASS_DRAFT_SEEDS = (7, 11, 17)
+CANONICAL_SECOND_PASS_SCIENCE_PACKET = "a18a7aa"
+PRIOR_SECOND_PASS_DRAFT_V0_PACKET = "6ec3cec"
 DEFAULT_SECOND_PASS_CONDITIONS = (
     "nominal_full_anchor",
     "intermittent_anchor",
@@ -67,6 +70,13 @@ def second_pass_fused_filter_overrides(lock_payload: dict[str, Any]) -> dict[str
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_csv_rows(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -269,6 +279,9 @@ def _ensure_run_artifacts(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]
     if not metrics_path.exists():
         generate_isaac_report_artifacts(run_dir, allow_incomplete=False, promote_links=False)
     metrics = _load_json(run_dir / "analysis" / "metrics.json")
+    if "control_success" not in metrics and (run_dir / "raw" / "controller_diagnostics.csv").exists():
+        generate_isaac_report_artifacts(run_dir, allow_incomplete=False, promote_links=False)
+        metrics = _load_json(run_dir / "analysis" / "metrics.json")
 
     quality_path = run_dir / "analysis" / "estimator_quality.json"
     if quality_path.exists():
@@ -329,11 +342,20 @@ def _seed_from_run_id(run_id: str) -> int | None:
         return None
 
 
+def _repo_relative(path: Path, repo_root: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(repo_root).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
 def _record_from_run(run_dir: Path) -> dict[str, Any]:
     metrics, quality = _ensure_run_artifacts(run_dir)
     run_id = str(metrics.get("run_id", run_dir.name))
     condition = _condition_from_metrics(metrics)
     summary = dict(quality.get("summary", {}))
+    control_success = dict(metrics.get("control_success", {}))
     return {
         "run_id": run_id,
         "run_dir": str(run_dir.resolve()),
@@ -367,6 +389,23 @@ def _record_from_run(run_dir: Path) -> dict[str, Any]:
         "anchor_visible_effective_fraction": _float_or_none(metrics.get("estimation", {}).get("anchor_visible_effective_fraction")),
         "anchor_update_suppressed_fraction": _float_or_none(metrics.get("estimation", {}).get("anchor_update_suppressed_fraction")),
         "mean_smoother_feedback_norm_m": _float_or_none(summary.get("mean_smoother_correction_norm_m")),
+        "waypoint_success_fraction_1cm": _float_or_none(control_success.get("waypoint_success_fraction_1cm")),
+        "waypoint_success_fraction_2cm": _float_or_none(control_success.get("waypoint_success_fraction_2cm")),
+        "waypoint_success_fraction_5cm": _float_or_none(control_success.get("waypoint_success_fraction_5cm")),
+        "mean_waypoint_dwell_time_s": _float_or_none(control_success.get("mean_waypoint_dwell_time_s")),
+        "p95_waypoint_dwell_time_s": _float_or_none(control_success.get("p95_waypoint_dwell_time_s")),
+        "final_completion_time_s": _float_or_none(control_success.get("final_completion_time_s")),
+        "mean_commanded_realized_path_deviation_m": _float_or_none(
+            control_success.get("mean_commanded_realized_path_deviation_m")
+        ),
+        "p95_commanded_realized_path_deviation_m": _float_or_none(
+            control_success.get("p95_commanded_realized_path_deviation_m")
+        ),
+        "time_integrated_commanded_realized_path_deviation_m_s": _float_or_none(
+            control_success.get("time_integrated_commanded_realized_path_deviation_m_s")
+        ),
+        "dropped_command_event_count": _float_or_none(control_success.get("dropped_command_event_count")),
+        "dropped_command_duration_s": _float_or_none(control_success.get("dropped_command_duration_s")),
         "smoother_backend": str(_load_json(run_dir / "config_snapshot" / "estimation.json").get("smoother", {}).get("backend", "lightweight")),
     }
 
@@ -410,6 +449,17 @@ def _aggregate_rows(records: list[dict[str, Any]], *, condition: str | None = No
             "anchor_visible_effective_fraction",
             "anchor_update_suppressed_fraction",
             "mean_smoother_feedback_norm_m",
+            "waypoint_success_fraction_1cm",
+            "waypoint_success_fraction_2cm",
+            "waypoint_success_fraction_5cm",
+            "mean_waypoint_dwell_time_s",
+            "p95_waypoint_dwell_time_s",
+            "final_completion_time_s",
+            "mean_commanded_realized_path_deviation_m",
+            "p95_commanded_realized_path_deviation_m",
+            "time_integrated_commanded_realized_path_deviation_m_s",
+            "dropped_command_event_count",
+            "dropped_command_duration_s",
         ):
             mean, std = _mean_std([_float_or_none(value.get(key)) for value in values])
             row[key] = mean
@@ -516,6 +566,209 @@ def _copy_run_figure(run_record: dict[str, Any], relative_path: str, output_path
     _save_text_figure(output_path, title=title, lines=[f"Missing source figure: {source}"])
 
 
+def _runtime_row(
+    rows: list[dict[str, Any]],
+    *,
+    condition: str,
+    estimator_mode: str,
+) -> dict[str, Any] | None:
+    return next(
+        (
+            row
+            for row in rows
+            if str(row.get("condition")) == str(condition)
+            and str(row.get("estimator_mode")) == str(estimator_mode)
+        ),
+        None,
+    )
+
+
+def _first_pass_frozen_nominal_evidence(root: Path) -> dict[str, Any]:
+    matrix_rows = _load_csv_rows(root / "latest_first_pass_suite" / "analysis" / "first_pass_matrix_table.csv")
+    uncertainty_rows = _load_csv_rows(root / "latest_first_pass_suite" / "analysis" / "first_pass_uncertainty_table.csv")
+    matrix_row = next(
+        (
+            row
+            for row in matrix_rows
+            if str(row.get("run_id")) == "first_pass_fused_closed-loop_servo_nominal_seed_007"
+        ),
+        {},
+    )
+    uncertainty_row = next(
+        (
+            row
+            for row in uncertainty_rows
+            if str(row.get("run_id")) == "first_pass_fused_closed-loop_servo_nominal_seed_007"
+        ),
+        {},
+    )
+    return {
+        "label": "Frozen first-pass fused nominal",
+        "stage": "first_pass_frozen_nominal",
+        "run_id": "first_pass_fused_closed-loop_servo_nominal_seed_007",
+        "mean_position_error_m": _float_or_none(matrix_row.get("mean_position_error_m")),
+        "mean_waypoint_error_m": _float_or_none(matrix_row.get("mean_waypoint_error_m")),
+        "completion_fraction": _float_or_none(matrix_row.get("completion_fraction")),
+        "empirical_95_coverage_percent": _float_or_none(uncertainty_row.get("empirical_95_coverage_percent")),
+        "pose_nees": _float_or_none(uncertainty_row.get("pose_nees")),
+        "artifact_origin": "output/isaac_runs/latest_first_pass_suite/analysis/{first_pass_matrix_table.csv,first_pass_uncertainty_table.csv}",
+    }
+
+
+def _blocked_prefx_dropout_evidence(docs_dir: Path) -> dict[str, Any]:
+    log_path = docs_dir / "isaac_second_pass_execution_log.md"
+    text = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
+    match = re.search(
+        r"fused intermittent-anchor collapsed catastrophically.*?"
+        r"mean position error: about `(?P<position>[^`]+)`.*?"
+        r"coverage: about `(?P<coverage>[^`]+)`.*?"
+        r"pose NEES: about `(?P<nees>[^`]+)`",
+        text,
+        flags=re.DOTALL,
+    )
+    return {
+        "label": "Blocked pre-fix second-pass intermittent fused",
+        "stage": "second_pass_blocked_dropout",
+        "run_id": None,
+        "mean_position_error_m": None if match is None else _float_or_none(match.group("position").replace(" m", "")),
+        "mean_waypoint_error_m": None,
+        "completion_fraction": None,
+        "empirical_95_coverage_percent": None
+        if match is None
+        else _float_or_none(match.group("coverage").replace("%", "")),
+        "pose_nees": None if match is None else _float_or_none(match.group("nees")),
+        "artifact_origin": "docs/isaac_second_pass_execution_log.md",
+    }
+
+
+def _final_second_pass_evidence(runtime_rows: list[dict[str, Any]], *, condition: str) -> dict[str, Any]:
+    row = _runtime_row(runtime_rows, condition=condition, estimator_mode="fused") or {}
+    label = (
+        "Final zig-zag second-pass fused nominal"
+        if condition == "nominal_full_anchor"
+        else "Final zig-zag second-pass fused intermittent"
+    )
+    return {
+        "label": label,
+        "stage": f"second_pass_final_{condition}",
+        "run_ids": list(row.get("run_ids", [])),
+        "mean_position_error_m": _float_or_none(row.get("mean_position_error_m")),
+        "mean_waypoint_error_m": _float_or_none(row.get("mean_waypoint_error_m")),
+        "completion_fraction": _float_or_none(row.get("completion_fraction")),
+        "empirical_95_coverage_percent": _float_or_none(row.get("empirical_95_coverage_percent")),
+        "pose_nees": _float_or_none(row.get("pose_nees")),
+        "artifact_origin": "output/isaac_runs/latest_second_pass_suite/analysis/suite_summary.json",
+    }
+
+
+def _dropout_ablation_row(
+    summary_path: Path,
+    *,
+    debug_mode: str,
+    label: str,
+    repo_root: Path,
+) -> dict[str, Any]:
+    summary = _load_json(summary_path) if summary_path.exists() else {}
+    row = next(
+        (
+            candidate
+            for candidate in list(summary.get("detailed_rows", []))
+            if str(candidate.get("debug_mode")) == str(debug_mode)
+        ),
+        {},
+    )
+    return {
+        "label": label,
+        "run_id": row.get("run_id"),
+        "mean_position_error_m": _float_or_none(row.get("mean_position_error_m")),
+        "mean_waypoint_error_m": _float_or_none(row.get("mean_waypoint_error_m")),
+        "completion_fraction": _float_or_none(row.get("completion_fraction")),
+        "empirical_95_coverage_percent": _float_or_none(row.get("empirical_95_coverage_percent")),
+        "pose_nees": _float_or_none(row.get("pose_nees")),
+        "blocker_clear": row.get("blocker_clear"),
+        "artifact_origin": _repo_relative(summary_path, repo_root),
+    }
+
+
+def _evidence_tables(
+    root: Path,
+    *,
+    docs_dir: Path,
+    runtime_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    review_root = docs_dir.parent
+    baseline_summary = root / "latest_second_pass_dropout_debug" / "summary.json"
+    gate10_summary = root / "probes" / "gate_10" / "latest_second_pass_dropout_debug" / "summary.json"
+    gyro_gate10_summary = root / "probes" / "gyro_only_gate_10" / "latest_second_pass_dropout_debug" / "summary.json"
+    evidence = {
+        "canonical_science_packet_commit": CANONICAL_SECOND_PASS_SCIENCE_PACKET,
+        "prior_draft_v0_packet_commit": PRIOR_SECOND_PASS_DRAFT_V0_PACKET,
+        "provenance_note": (
+            "Commit a18a7aa changed the canonical task surface to the five-point zig-zag benchmark. "
+            "Commit 6ec3cec was the earlier review-bundle closure packet on the prior straight-line task."
+        ),
+        "repair_trajectory": {
+            "columns": [
+                "label",
+                "mean_position_error_m",
+                "mean_waypoint_error_m",
+                "completion_fraction",
+                "empirical_95_coverage_percent",
+                "pose_nees",
+                "artifact_origin",
+            ],
+            "rows": [
+                _first_pass_frozen_nominal_evidence(root),
+                _blocked_prefx_dropout_evidence(docs_dir),
+                _final_second_pass_evidence(runtime_rows, condition="nominal_full_anchor"),
+                _final_second_pass_evidence(runtime_rows, condition="intermittent_anchor"),
+            ],
+        },
+        "suppression_repair_ablation": {
+            "columns": [
+                "label",
+                "mean_position_error_m",
+                "mean_waypoint_error_m",
+                "completion_fraction",
+                "empirical_95_coverage_percent",
+                "pose_nees",
+                "blocker_clear",
+                "artifact_origin",
+            ],
+            "rows": [
+                _dropout_ablation_row(
+                    baseline_summary,
+                    debug_mode="fused_baseline",
+                    label="Baseline full-IMU suppression path",
+                    repo_root=review_root,
+                ),
+                _dropout_ablation_row(
+                    gate10_summary,
+                    debug_mode="fused_baseline",
+                    label="Gate-10 only",
+                    repo_root=review_root,
+                ),
+                _dropout_ablation_row(
+                    gyro_gate10_summary,
+                    debug_mode="fused_baseline",
+                    label="Gyro-only + gate-10 intermediate",
+                    repo_root=review_root,
+                ),
+                _dropout_ablation_row(
+                    gyro_gate10_summary,
+                    debug_mode="fused_reacquisition_covariance_inflation",
+                    label="Gyro-only + gate-10 + covinfl-8 winner",
+                    repo_root=review_root,
+                ),
+            ],
+        },
+    }
+    evidence_path = docs_dir / "isaac_second_pass_evidence_tables.json"
+    _write_json(evidence_path, evidence)
+    evidence["evidence_path"] = _repo_relative(evidence_path, review_root)
+    return evidence
+
+
 def generate_second_pass_suite_artifacts(
     output_root: str | Path,
     *,
@@ -524,6 +777,8 @@ def generate_second_pass_suite_artifacts(
     artifact_source: str = "latest_second_pass_suite",
 ) -> dict[str, Any]:
     root = Path(output_root).resolve()
+    repo_root = Path(lock_path).resolve().parents[1]
+    docs_dir = Path(lock_path).resolve().parent
     suite_dir = root / "latest_second_pass_suite"
     analysis_dir = suite_dir / "analysis"
     report_data_dir = analysis_dir / "report_data"
@@ -574,6 +829,29 @@ def generate_second_pass_suite_artifacts(
         }
         for row in runtime_rows
     ]
+    control_success_rows = [
+        {
+            "condition": row["condition"],
+            "condition_label": row["condition_label"],
+            "estimator_mode": row["estimator_mode"],
+            "sample_count": row["sample_count"],
+            "waypoint_success_fraction_1cm": row["waypoint_success_fraction_1cm"],
+            "waypoint_success_fraction_2cm": row["waypoint_success_fraction_2cm"],
+            "waypoint_success_fraction_5cm": row["waypoint_success_fraction_5cm"],
+            "mean_waypoint_dwell_time_s": row["mean_waypoint_dwell_time_s"],
+            "p95_waypoint_dwell_time_s": row["p95_waypoint_dwell_time_s"],
+            "final_completion_time_s": row["final_completion_time_s"],
+            "mean_commanded_realized_path_deviation_m": row["mean_commanded_realized_path_deviation_m"],
+            "p95_commanded_realized_path_deviation_m": row["p95_commanded_realized_path_deviation_m"],
+            "time_integrated_commanded_realized_path_deviation_m_s": row[
+                "time_integrated_commanded_realized_path_deviation_m_s"
+            ],
+            "dropped_command_event_count": row["dropped_command_event_count"],
+            "dropped_command_duration_s": row["dropped_command_duration_s"],
+            "mean_actuator_tracking_error": row["mean_actuator_tracking_error"],
+        }
+        for row in runtime_rows
+    ]
 
     _write_csv(analysis_dir / "draft_runtime_table.csv", runtime_rows)
     _write_csv(analysis_dir / "draft_nominal_table.csv", nominal_rows)
@@ -581,6 +859,10 @@ def generate_second_pass_suite_artifacts(
     _write_csv(analysis_dir / "draft_actuation_stress_table.csv", stress_rows)
     _write_csv(analysis_dir / "draft_uncertainty_table.csv", uncertainty_rows)
     _write_csv(analysis_dir / "draft_map_quality_table.csv", map_quality_rows)
+    _write_csv(analysis_dir / "control_success_summary.csv", control_success_rows)
+    _write_json(analysis_dir / "control_success_summary.json", {"rows": control_success_rows})
+
+    evidence_tables = _evidence_tables(root, docs_dir=docs_dir, runtime_rows=runtime_rows)
 
     runtime_tex_rows = [
         rf"{row['condition_label']} / {row['estimator_mode']} & {_tex_value(row['sample_count'])} & {_tex_value(row['duration_s'])} & {_tex_value(row['camera_frames'])} & {_tex_value(row['imu_packets'])} & {_tex_value(row['commands'])} \\"
@@ -606,6 +888,18 @@ def generate_second_pass_suite_artifacts(
         rf"{row['condition_label']} / {row['estimator_mode']} & {_tex_value(row['mean_auxiliary_tag_position_error_m'])} & {_tex_value(row['p95_auxiliary_tag_position_error_m'])} & {_tex_value(row['anchor_visible_raw_fraction'], percent=True)} & {_tex_value(row['anchor_visible_effective_fraction'], percent=True)} & {_tex_value(row['anchor_update_suppressed_fraction'], percent=True)} \\"
         for row in map_quality_rows
     ]
+    repair_trajectory_tex_rows = [
+        rf"{row['label']} & {_tex_value(row.get('mean_position_error_m'), digits=3, missing_value='--')} & {_tex_value(row.get('mean_waypoint_error_m'), digits=3, missing_value='--')} & {_tex_value(row.get('completion_fraction'), digits=1, percent=True, missing_value='--')} & {_tex_value(row.get('empirical_95_coverage_percent'), digits=1, missing_value='--')} & {_tex_value(row.get('pose_nees'), digits=2, missing_value='--')} \\"
+        for row in evidence_tables["repair_trajectory"]["rows"]
+    ]
+    suppression_ablation_tex_rows = [
+        rf"{row['label']} & {_tex_value(row.get('mean_position_error_m'), digits=3, missing_value='--')} & {_tex_value(row.get('mean_waypoint_error_m'), digits=3, missing_value='--')} & {_tex_value(row.get('empirical_95_coverage_percent'), digits=1, missing_value='--')} & {_tex_value(row.get('pose_nees'), digits=2, missing_value='--')} & {_tex_value(row.get('blocker_clear'), missing_value='--')} \\"
+        for row in evidence_tables["suppression_repair_ablation"]["rows"]
+    ]
+    control_success_tex_rows = [
+        rf"{row['condition_label']} / {row['estimator_mode']} & {_tex_value(row['waypoint_success_fraction_1cm'], digits=1, percent=True, missing_value='--')} & {_tex_value(row['waypoint_success_fraction_2cm'], digits=1, percent=True, missing_value='--')} & {_tex_value(row['waypoint_success_fraction_5cm'], digits=1, percent=True, missing_value='--')} & {_tex_value(row['mean_commanded_realized_path_deviation_m'], digits=3, missing_value='--')} & {_tex_value(row['dropped_command_duration_s'], digits=3, missing_value='--')} \\"
+        for row in control_success_rows
+    ]
 
     report_artifacts_path = report_data_dir / "second_pass_paper_artifacts.tex"
     report_artifacts_path.write_text(
@@ -617,6 +911,9 @@ def generate_second_pass_suite_artifacts(
                 _macro_definition("IsaacSecondPassActuationStressRows", stress_tex_rows),
                 _macro_definition("IsaacSecondPassUncertaintyRows", uncertainty_tex_rows),
                 _macro_definition("IsaacSecondPassMapQualityRows", map_quality_tex_rows),
+                _macro_definition("IsaacSecondPassRepairTrajectoryRows", repair_trajectory_tex_rows),
+                _macro_definition("IsaacSecondPassSuppressionAblationRows", suppression_ablation_tex_rows),
+                _macro_definition("IsaacSecondPassControlSuccessRows", control_success_tex_rows),
             ]
         )
         + "\n",
@@ -731,10 +1028,12 @@ def generate_second_pass_suite_artifacts(
 
     summary_payload = {
         "artifact_source": artifact_source,
-        "suite_dir": str(suite_dir.resolve()),
-        "lock_path": str(Path(lock_path).resolve()),
+        "suite_dir": _repo_relative(suite_dir, repo_root),
+        "lock_path": _repo_relative(Path(lock_path).resolve(), repo_root),
         "run_ids": [str(record["run_id"]) for record in records],
         "draft_selection": dict(lock_payload.get("draft_selection", {})),
+        "canonical_science_packet_commit": CANONICAL_SECOND_PASS_SCIENCE_PACKET,
+        "prior_draft_v0_packet_commit": PRIOR_SECOND_PASS_DRAFT_V0_PACKET,
         "fused_filter_overrides": second_pass_fused_filter_overrides(lock_payload),
         "runtime_rows": runtime_rows,
         "nominal_rows": nominal_rows,
@@ -742,6 +1041,10 @@ def generate_second_pass_suite_artifacts(
         "stress_rows": stress_rows,
         "uncertainty_rows": uncertainty_rows,
         "map_quality_rows": map_quality_rows,
+        "control_success_rows": control_success_rows,
+        "control_success_summary_json": _repo_relative(analysis_dir / "control_success_summary.json", repo_root),
+        "control_success_summary_csv": _repo_relative(analysis_dir / "control_success_summary.csv", repo_root),
+        "evidence_tables_path": _repo_relative(docs_dir / "isaac_second_pass_evidence_tables.json", repo_root),
         "representative_runs": {
             condition: {
                 estimator_mode: value["run_id"]
@@ -749,7 +1052,7 @@ def generate_second_pass_suite_artifacts(
             }
             for condition, estimators in representative.items()
         },
-        "paper_artifacts_tex": str(report_artifacts_path.resolve()),
+        "paper_artifacts_tex": _repo_relative(report_artifacts_path, repo_root),
     }
     summary_json = analysis_dir / "suite_summary.json"
     _write_json(summary_json, summary_payload)

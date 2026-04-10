@@ -1,14 +1,19 @@
 {
   "artifact_policy": "Second-pass review outputs under output/isaac_runs remain local/generated artifacts. Regenerate them after cloning with scripts/build_isaac_second_pass_review_bundle.py.",
+  "canonical_science_packet_commit": "a18a7aa",
   "commands": [
     "source .venv/bin/activate",
     "python scripts/build_isaac_second_pass_review_bundle.py"
   ],
+  "control_success_summary_json": "output/isaac_runs/latest_second_pass_suite/analysis/control_success_summary.json",
   "dashboard_path": "output/isaac_runs/latest_second_pass_suite/presentation/index.html",
   "draft_pdf_path": "report_tex/second_pass_publication_draft.pdf",
+  "evidence_tables_path": "docs/isaac_second_pass_evidence_tables.json",
   "lock_path": "docs/second_pass_draft_lock.json",
-  "packet_head": "6ec3cec",
+  "packet_head": "a18a7aa",
   "presentation_manifest_path": "output/isaac_runs/latest_second_pass_suite/presentation/presentation_manifest.json",
+  "prior_draft_v0_packet_commit": "6ec3cec",
+  "provenance_note": "Commit a18a7aa changed the canonical benchmark surface to the five-point zig-zag task. Commit 6ec3cec was the earlier review-bundle closure packet for the prior straight-line package.",
   "publication_build_summary_path": "output/isaac_runs/latest_second_pass_suite/analysis/publication_build_summary.json",
   "recommended_start_points": [
     "docs/isaac_second_pass_handoff.md",

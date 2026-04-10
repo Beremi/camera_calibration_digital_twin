@@ -29,6 +29,8 @@ def test_second_pass_suite_artifacts_write_tables_macros_and_figures(tmp_path: P
     assert (analysis_dir / "draft_actuation_stress_table.csv").exists()
     assert (analysis_dir / "draft_uncertainty_table.csv").exists()
     assert (analysis_dir / "draft_map_quality_table.csv").exists()
+    assert (analysis_dir / "control_success_summary.csv").exists()
+    assert (analysis_dir / "control_success_summary.json").exists()
 
     paper_artifacts = (report_data_dir / "second_pass_paper_artifacts.tex").read_text(encoding="utf-8")
     assert r"\IsaacSecondPassRuntimeRows" in paper_artifacts
@@ -37,6 +39,9 @@ def test_second_pass_suite_artifacts_write_tables_macros_and_figures(tmp_path: P
     assert r"\IsaacSecondPassActuationStressRows" in paper_artifacts
     assert r"\IsaacSecondPassUncertaintyRows" in paper_artifacts
     assert r"\IsaacSecondPassMapQualityRows" in paper_artifacts
+    assert r"\IsaacSecondPassRepairTrajectoryRows" in paper_artifacts
+    assert r"\IsaacSecondPassSuppressionAblationRows" in paper_artifacts
+    assert r"\IsaacSecondPassControlSuccessRows" in paper_artifacts
     assert r"\ArtifactPending{}" not in paper_artifacts
     assert "8881.9" not in paper_artifacts
 
@@ -64,6 +69,8 @@ def test_second_pass_suite_artifacts_write_tables_macros_and_figures(tmp_path: P
     assert summary["fused_filter_overrides"]["suppression_propagation_mode"] == "gyro_only"
     assert summary["fused_filter_overrides"]["suppression_imu_specific_force_gate_mps2"] == 10.0
     assert summary["fused_filter_overrides"]["dropout_post_reacquisition_covariance_scale"] == 8.0
+    assert Path(summary["control_success_summary_json"]).exists()
+    assert Path(summary["evidence_tables_path"]).exists()
 
 
 def test_second_pass_suite_dry_run_shows_fused_filter_overrides(tmp_path: Path) -> None:

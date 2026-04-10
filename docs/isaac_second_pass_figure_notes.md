@@ -55,6 +55,36 @@ that intermittent-anchor fused is no longer a catastrophic failure case.
 - Notice: the promoted fused nominal lock was selected from generated evidence and a focused retune rather than a hand-picked parameter set.
 - Cite in paper: second-pass tuning protocol section.
 
+### `representative_nominal_sim_waypoints.png`
+
+- Shows: the first representative simulator frame plus the frames nearest each waypoint arrival for the promoted fused nominal run.
+- Notice: the canonical task is now a five-point three-dimensional zig-zag rather than the older near-collinear sweep, so this montage makes the workspace motion visually explicit.
+- Cite in paper: benchmark-definition paragraph or nominal-results figure sequence.
+
+### `representative_nominal_position_estimation.png`
+
+- Shows: component-wise ground-truth and estimated camera position through the representative nominal fused run.
+- Notice: the fused path remains numerically sane across the broader spatial motion, which supports the claim that the repaired lock is competitive rather than fragile.
+- Cite in paper: nominal-results paragraph after the nominal table.
+
+### `representative_nominal_pattern_world_positions.png`
+
+- Shows: recovered world-frame positions of all calibration patterns over time.
+- Notice: because the tags are static, the useful read is how little the recovered pattern positions wander while the phone explores the room.
+- Cite in paper: diagnostics paragraph tying estimator stability to map stability.
+
+### `representative_nominal_pattern_relative_camera_positions.png`
+
+- Shows: the relative camera position to each observed pattern over time.
+- Notice: these traces show how the same zig-zag motion looks in each tag-relative frame, which is useful for understanding viewpoint diversity across the path.
+- Cite in paper: figure sequence around the richer zig-zag diagnostics.
+
+### `representative_nominal_imu_measurements.png`
+
+- Shows: angular-velocity and specific-force traces from the representative nominal fused run.
+- Notice: the repaired fused lock is paired with a readable sensor-side story rather than only final aggregate metrics, which is especially useful when explaining the suppression-aware propagation fix.
+- Cite in paper: method/setup or diagnostics discussion.
+
 ## Dashboard And Presentation Videos
 
 ### `hero_demo.mp4`

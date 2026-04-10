@@ -40,11 +40,20 @@ Nominal / full anchor / fused & \ArtifactPending{} & \ArtifactPending{} & \Artif
 Nominal / full anchor / visual & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
 Nominal / full anchor / fused & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
 }
+\newcommand{\IsaacSecondPassRepairTrajectoryRows}{%
+Frozen first-pass fused nominal & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\IsaacSecondPassSuppressionAblationRows}{%
+Baseline full-IMU suppression path & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
+\newcommand{\IsaacSecondPassControlSuccessRows}{%
+Nominal / full anchor / visual & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} & \ArtifactPending{} \\
+}
 \IfFileExists{\IsaacSecondPassSuiteReportDataDir/second_pass_paper_artifacts.tex}{%
     \input{\IsaacSecondPassSuiteReportDataDir/second_pass_paper_artifacts.tex}%
 }{}
 
-\title{Second-Pass Draft: Anchored Visual and Visual--Inertial Closed-Loop Path Tracking with Uncertain Servo Actuation in Isaac Sim}
+\title{Stabilizing Anchored Visual--Inertial Closed-Loop Tracking Under Intermittent Anchor Loss in Isaac Sim}
 \author{Artifact-driven second-pass draft generated from the estimator-quality branch}
 \date{April 2026}
 
@@ -85,6 +94,31 @@ The second-pass draft suite contains three closed-loop conditions. The nominal f
 \subsection{Reproducibility}
 All second-pass draft numbers in this paper are generated from the rerun suite under \texttt{output/isaac\_runs/latest\_second\_pass\_suite}. The three suite seeds are `7`, `11`, and `17`. The fused backend is \texttt{lightweight}. The promoted fused lock values are `imu = 8.0`, `vision = 2.0`, `post = 2.0`, \texttt{gyro\_only} suppression propagation, specific-force gate `10.0`, dropout covariance inflation `8.0`, and auxiliary tags disabled in filter, smoother, and control. The first-pass publication artifacts remain frozen under \texttt{latest\_first\_pass\_suite} and are not reused as second-pass inputs.
 
+\section{Repair Context}
+\begin{table}[H]
+\centering
+\caption{Repair trajectory from the frozen first-pass baseline through the repaired zig-zag second-pass package. The key story is not universal fused superiority; it is the removal of the scientifically broken intermittent-anchor failure and the recovery of a numerically defensible fused baseline.}
+\begin{tabular}{lccccc}
+\toprule
+Stage & Pos. err [m] & Waypoint err [m] & Completion [\%] & Coverage [\%] & NEES \\
+\midrule
+\IsaacSecondPassRepairTrajectoryRows
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Suppression-repair ablation from the preserved seed-007 debug bundles. The preserved intermediate shows that tighter gating helped but did not clear the blocker by itself; the promoted winner needed both suppression-aware propagation and post-reacquisition covariance inflation.}
+\begin{tabular}{lccccc}
+\toprule
+Probe & Pos. err [m] & Waypoint err [m] & Coverage [\%] & NEES & Blocker clear \\
+\midrule
+\IsaacSecondPassSuppressionAblationRows
+\bottomrule
+\end{tabular}
+\end{table}
+
 \section{Runtime Summary}
 \begin{table}[H]
 \centering
@@ -114,6 +148,20 @@ Estimator & Pos. err [m] & Waypoint err [m] & Completion [\%] & Anchor RMSE [px]
 \end{table}
 
 The nominal table should be read as the cleanest estimate-quality comparison in the draft. In the refreshed suite, fused is competitive on mean position error and remains well calibrated, but visual still leads on waypoint error. That is enough for a first usable stabilization draft: the fused path is no longer the obviously weaker baseline on the clean case, but the data do not support claiming nominal fused superiority across the board.
+
+\begin{table}[H]
+\centering
+\caption{Task-facing control-success summary on the canonical zig-zag suite. These metrics use the logged ground-truth camera path and controller diagnostics to ask whether the controller actually reaches the configured waypoints within tighter tolerances and how closely the realized end-effector path follows the commanded anchored path.}
+\begin{tabular}{lccccc}
+\toprule
+Condition / estimator & 1 cm success [\%] & 2 cm success [\%] & 5 cm success [\%] & Mean EE path dev [m] & Dropped cmd dur [s] \\
+\midrule
+\IsaacSecondPassControlSuccessRows
+\bottomrule
+\end{tabular}
+\end{table}
+
+The control-success table sharpens the practical interpretation of the suite. The repaired fused lock is no longer merely numerically sane; it now supports a broader spatial zig-zag task without reverting to the catastrophic intermittent-anchor behavior that blocked the branch. At the same time, the control-facing metrics keep the manuscript honest. Visual reaches all waypoints within `5 cm` in both nominal and intermittent-anchor conditions, while fused reaches `60\%` in each. Under servo stress the gap narrows and slightly reverses (`53.3\%` fused versus `40.0\%` visual), but the broader takeaway is still stabilization rather than control dominance.
 
 \begin{table}[H]
 \centering
@@ -260,6 +308,9 @@ The discussion should be read with that scope in mind. This draft does not claim
 Several limitations remain explicit. The suite still uses one scene and one robot preset. Replay remains analysis-only. The intermittent-anchor condition is a deterministic gating schedule rather than a photorealistic occlusion benchmark. The servo-stress condition is intentionally narrow and should be treated as a first draft of the actuation-realism story rather than a comprehensive stress campaign.
 
 Those limits are acceptable for this draft because the goal is now narrower than a broad fused-advantage paper. This second-pass draft closes the minimum publishable stabilization question: whether the anchored visual--inertial estimator can be repaired enough to remain competitive and well calibrated on the nominal benchmark while avoiding catastrophic failure under intermittent anchor loss. It does not establish that fused estimation is generally superior to visual-only control in this setup, and the current suite still leaves visual as the stronger waypoint-tracking baseline.
+
+\subsection{Threats To Validity}
+The present stabilization result is intentionally narrow. It is demonstrated in one scene with one robot preset, deterministic anchor-suppression windows, a synthetic IMU, and auxiliary tags disabled in the final fused lock. Those choices were deliberate because they isolate the repaired fused runtime behavior, but they also limit how broadly the current draft should be generalized. The benchmark therefore supports an honest repair-and-stabilization claim, not a broad statement that fused estimation is now universally superior in anchored closed-loop control.
 
 \bibliographystyle{plain}
 \bibliography{references}

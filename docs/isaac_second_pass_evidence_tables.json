@@ -1,0 +1,128 @@
+{
+  "canonical_science_packet_commit": "a18a7aa",
+  "prior_draft_v0_packet_commit": "6ec3cec",
+  "provenance_note": "Commit a18a7aa changed the canonical task surface to the five-point zig-zag benchmark. Commit 6ec3cec was the earlier review-bundle closure packet on the prior straight-line task.",
+  "repair_trajectory": {
+    "columns": [
+      "label",
+      "mean_position_error_m",
+      "mean_waypoint_error_m",
+      "completion_fraction",
+      "empirical_95_coverage_percent",
+      "pose_nees",
+      "artifact_origin"
+    ],
+    "rows": [
+      {
+        "artifact_origin": "output/isaac_runs/latest_first_pass_suite/analysis/{first_pass_matrix_table.csv,first_pass_uncertainty_table.csv}",
+        "completion_fraction": 1.0,
+        "empirical_95_coverage_percent": 68.54166666666667,
+        "label": "Frozen first-pass fused nominal",
+        "mean_position_error_m": 0.04706035532475306,
+        "mean_waypoint_error_m": 0.02409508813254648,
+        "pose_nees": 69.50742096750082,
+        "run_id": "first_pass_fused_closed-loop_servo_nominal_seed_007",
+        "stage": "first_pass_frozen_nominal"
+      },
+      {
+        "artifact_origin": "docs/isaac_second_pass_execution_log.md",
+        "completion_fraction": null,
+        "empirical_95_coverage_percent": 14.72,
+        "label": "Blocked pre-fix second-pass intermittent fused",
+        "mean_position_error_m": 251.69,
+        "mean_waypoint_error_m": null,
+        "pose_nees": 14600000.0,
+        "run_id": null,
+        "stage": "second_pass_blocked_dropout"
+      },
+      {
+        "artifact_origin": "output/isaac_runs/latest_second_pass_suite/analysis/suite_summary.json",
+        "completion_fraction": 1.0,
+        "empirical_95_coverage_percent": 99.79166666666667,
+        "label": "Final zig-zag second-pass fused nominal",
+        "mean_position_error_m": 0.012682615088976718,
+        "mean_waypoint_error_m": 0.032341478119331656,
+        "pose_nees": 4.206883361146544,
+        "run_ids": [
+          "second_pass_draft_fused_nominal_full_anchor_seed_007",
+          "second_pass_draft_fused_nominal_full_anchor_seed_011",
+          "second_pass_draft_fused_nominal_full_anchor_seed_017"
+        ],
+        "stage": "second_pass_final_nominal_full_anchor"
+      },
+      {
+        "artifact_origin": "output/isaac_runs/latest_second_pass_suite/analysis/suite_summary.json",
+        "completion_fraction": 0.9333333333333332,
+        "empirical_95_coverage_percent": 87.0138888888889,
+        "label": "Final zig-zag second-pass fused intermittent",
+        "mean_position_error_m": 0.03112036858815284,
+        "mean_waypoint_error_m": 0.032081780449316505,
+        "pose_nees": 14.239232040174812,
+        "run_ids": [
+          "second_pass_draft_fused_intermittent_anchor_seed_007",
+          "second_pass_draft_fused_intermittent_anchor_seed_011",
+          "second_pass_draft_fused_intermittent_anchor_seed_017"
+        ],
+        "stage": "second_pass_final_intermittent_anchor"
+      }
+    ]
+  },
+  "suppression_repair_ablation": {
+    "columns": [
+      "label",
+      "mean_position_error_m",
+      "mean_waypoint_error_m",
+      "completion_fraction",
+      "empirical_95_coverage_percent",
+      "pose_nees",
+      "blocker_clear",
+      "artifact_origin"
+    ],
+    "rows": [
+      {
+        "artifact_origin": "output/isaac_runs/latest_second_pass_dropout_debug/summary.json",
+        "blocker_clear": false,
+        "completion_fraction": 1.0,
+        "empirical_95_coverage_percent": 76.04166666666666,
+        "label": "Baseline full-IMU suppression path",
+        "mean_position_error_m": 0.1551700701675676,
+        "mean_waypoint_error_m": 0.02421285760291589,
+        "pose_nees": 195.95499022278034,
+        "run_id": "second_pass_dropout_debug_fused_seed_007"
+      },
+      {
+        "artifact_origin": "output/isaac_runs/probes/gate_10/latest_second_pass_dropout_debug/summary.json",
+        "blocker_clear": false,
+        "completion_fraction": 1.0,
+        "empirical_95_coverage_percent": 78.95833333333333,
+        "label": "Gate-10 only",
+        "mean_position_error_m": 0.07646855524642447,
+        "mean_waypoint_error_m": 0.02400847798767865,
+        "pose_nees": 52.69738612695298,
+        "run_id": "second_pass_dropout_debug_fused_seed_007"
+      },
+      {
+        "artifact_origin": "output/isaac_runs/probes/gyro_only_gate_10/latest_second_pass_dropout_debug/summary.json",
+        "blocker_clear": false,
+        "completion_fraction": 1.0,
+        "empirical_95_coverage_percent": 70.41666666666667,
+        "label": "Gyro-only + gate-10 intermediate",
+        "mean_position_error_m": 1.8215433783877182,
+        "mean_waypoint_error_m": 0.021902868757915455,
+        "pose_nees": 22233.560457859185,
+        "run_id": "second_pass_dropout_debug_fused_seed_007"
+      },
+      {
+        "artifact_origin": "output/isaac_runs/probes/gyro_only_gate_10/latest_second_pass_dropout_debug/summary.json",
+        "blocker_clear": true,
+        "completion_fraction": 1.0,
+        "empirical_95_coverage_percent": 88.95833333333333,
+        "label": "Gyro-only + gate-10 + covinfl-8 winner",
+        "mean_position_error_m": 0.030908472266735054,
+        "mean_waypoint_error_m": 0.0237880102774781,
+        "pose_nees": 10.100605338481053,
+        "run_id": "second_pass_dropout_debug_fused_covinfl_seed_007"
+      }
+    ]
+  }
+}

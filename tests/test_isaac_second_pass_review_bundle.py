@@ -54,6 +54,8 @@ def test_second_pass_review_bundle_builds_manifest_and_updates_lock(tmp_path: Pa
     assert payload["draft_pdf_path"]
     assert payload["presentation_manifest_path"]
     assert payload["dashboard_path"]
+    assert payload["canonical_science_packet_commit"] == "a18a7aa"
+    assert payload["evidence_tables_path"] == "docs/isaac_second_pass_evidence_tables.json"
 
     updated_lock = json.loads(lock_path.read_text(encoding="utf-8"))
     assert updated_lock["checkpoint"]["draft_selection_status"] == "review_bundle_ready"

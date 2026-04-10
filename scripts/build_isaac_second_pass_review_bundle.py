@@ -12,6 +12,8 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+CANONICAL_SECOND_PASS_SCIENCE_PACKET = "a18a7aa"
+PRIOR_SECOND_PASS_DRAFT_V0_PACKET = "6ec3cec"
 
 
 def parse_args() -> argparse.Namespace:
@@ -114,6 +116,8 @@ def build_review_bundle(
     checkpoint = lock_payload.setdefault("checkpoint", {})
     draft_selection = lock_payload.setdefault("draft_selection", {})
     checkpoint["current_work_packet_commit"] = _current_head()
+    checkpoint["canonical_science_packet_commit"] = CANONICAL_SECOND_PASS_SCIENCE_PACKET
+    checkpoint["prior_draft_v0_packet_commit"] = PRIOR_SECOND_PASS_DRAFT_V0_PACKET
     checkpoint["draft_selection_status"] = "review_bundle_ready"
     draft_selection["draft_ready"] = True
     draft_selection["suite_artifacts_stale"] = False
@@ -135,14 +139,20 @@ def build_review_bundle(
         draft_selection["tuning_summary_path"] = _repo_relative(Path(str(tuning_summary_path)))
     draft_selection["review_manifest_path"] = _repo_relative(manifest_path)
     draft_selection["draft_readiness_note"] = (
-        "The second-pass review bundle is now ready from the refreshed suite artifacts: the promoted "
-        "fused draft lock, the rebuilt paper PDF, the regenerated dashboard/media bundle, and the "
-        "review manifest all point to the same stabilization result."
+        "The second-pass review bundle is now ready from the refreshed zig-zag suite artifacts: the "
+        "promoted fused draft lock, the rebuilt paper PDF, the regenerated dashboard/media bundle, "
+        "the control-success summaries, and the review manifest all point to the same stabilization result."
     )
     _write_json(lock_path, lock_payload)
 
     manifest = {
         "packet_head": checkpoint["current_work_packet_commit"],
+        "canonical_science_packet_commit": CANONICAL_SECOND_PASS_SCIENCE_PACKET,
+        "prior_draft_v0_packet_commit": PRIOR_SECOND_PASS_DRAFT_V0_PACKET,
+        "provenance_note": (
+            "Commit a18a7aa changed the canonical benchmark surface to the five-point zig-zag task. "
+            "Commit 6ec3cec was the earlier review-bundle closure packet for the prior straight-line package."
+        ),
         "artifact_policy": (
             "Second-pass review outputs under output/isaac_runs remain local/generated artifacts. "
             "Regenerate them after cloning with scripts/build_isaac_second_pass_review_bundle.py."
@@ -154,6 +164,8 @@ def build_review_bundle(
         "presentation_manifest_path": draft_selection["presentation_manifest_path"],
         "dashboard_path": _repo_relative(Path(dashboard_payload["dashboard_path"])),
         "suite_summary_json": _repo_relative(Path(publication_payload["suite_summary_json"])),
+        "control_success_summary_json": "output/isaac_runs/latest_second_pass_suite/analysis/control_success_summary.json",
+        "evidence_tables_path": "docs/isaac_second_pass_evidence_tables.json",
         "representative_run_ids": dict(draft_selection.get("representative_run_ids", {})),
         "recommended_start_points": [
             "docs/isaac_second_pass_handoff.md",

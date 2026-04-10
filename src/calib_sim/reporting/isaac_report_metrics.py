@@ -78,6 +78,21 @@ def _csv_vector_or_none(row: dict[str, Any], x_key: str, y_key: str, z_key: str)
     return np.asarray([x, y, z], dtype=np.float64)
 
 
+def _pipe_vector_or_none(value: Any, *, expected_len: int = 3) -> np.ndarray | None:
+    if value in ("", None):
+        return None
+    parts = str(value).split("|")
+    if len(parts) < expected_len:
+        return None
+    usable = []
+    for part in parts[:expected_len]:
+        numeric = _float_or_none(part)
+        if numeric is None:
+            return None
+        usable.append(float(numeric))
+    return np.asarray(usable, dtype=np.float64)
+
+
 def _position_from_gt_row(row: dict[str, Any]) -> np.ndarray | None:
     position = _csv_vector_or_none(row, "px", "py", "pz")
     if position is not None:
@@ -370,6 +385,277 @@ def _ground_truth_waypoint_summary(
     )
 
 
+def _bool_from_csv(value: Any) -> bool:
+    return str(value).strip().lower() in {"true", "1", "yes"}
+
+
+def _median_dt(times: list[float]) -> float:
+    if len(times) < 2:
+        return 0.0
+    deltas = [max(0.0, float(right) - float(left)) for left, right in zip(times[:-1], times[1:])]
+    usable = [delta for delta in deltas if delta > 0.0]
+    return 0.0 if not usable else float(np.median(np.asarray(usable, dtype=np.float64)))
+
+
+def _series_within_window(
+    samples: list[tuple[float, np.ndarray]],
+    *,
+    start_s: float,
+    end_s: float,
+) -> list[tuple[float, np.ndarray]]:
+    return [
+        (timestamp, value)
+        for timestamp, value in samples
+        if float(start_s) <= float(timestamp) <= float(end_s)
+    ]
+
+
+def _controller_waypoint_windows(
+    controller_rows: list[dict[str, Any]],
+    *,
+    waypoint_count: int,
+    default_end_time_s: float | None,
+) -> list[dict[str, float | int | None]]:
+    if waypoint_count <= 0 or not controller_rows:
+        return []
+    sorted_rows = sorted(
+        controller_rows,
+        key=lambda row: _float_or_none(row.get("timestamp_s")) if _float_or_none(row.get("timestamp_s")) is not None else 1e18,
+    )
+    rows_by_waypoint: dict[int, list[float]] = {index: [] for index in range(waypoint_count)}
+    for row in sorted_rows:
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        waypoint_index = int(row.get("waypoint_index", -1) or -1)
+        if timestamp is None or waypoint_index < 0 or waypoint_index >= waypoint_count:
+            continue
+        rows_by_waypoint.setdefault(waypoint_index, []).append(float(timestamp))
+    last_timestamp = default_end_time_s
+    if last_timestamp is None:
+        timestamps = [_float_or_none(row.get("timestamp_s")) for row in sorted_rows]
+        usable = [float(value) for value in timestamps if value is not None]
+        last_timestamp = None if not usable else float(max(usable))
+    windows: list[dict[str, float | int | None]] = []
+    for waypoint_index in range(waypoint_count):
+        timestamps = rows_by_waypoint.get(waypoint_index, [])
+        if not timestamps:
+            windows.append({"waypoint_index": waypoint_index, "start_s": None, "end_s": None})
+            continue
+        start_s = float(min(timestamps))
+        next_start_candidates = [
+            float(min(candidate_times))
+            for next_index, candidate_times in rows_by_waypoint.items()
+            if next_index > waypoint_index and candidate_times
+        ]
+        end_s = float(min(next_start_candidates)) if next_start_candidates else last_timestamp
+        windows.append({"waypoint_index": waypoint_index, "start_s": start_s, "end_s": end_s})
+    return windows
+
+
+def _window_first_hit_time_s(
+    samples: list[tuple[float, np.ndarray]],
+    target: np.ndarray,
+    *,
+    threshold_m: float,
+) -> float | None:
+    for timestamp, position in samples:
+        if float(np.linalg.norm(position - target)) <= float(threshold_m):
+            return float(timestamp)
+    return None
+
+
+def _window_dwell_time_s(
+    samples: list[tuple[float, np.ndarray]],
+    target: np.ndarray,
+    *,
+    threshold_m: float,
+) -> float:
+    if len(samples) < 2:
+        return 0.0
+    dwell = 0.0
+    for (left_t, left_position), (right_t, _) in zip(samples[:-1], samples[1:]):
+        if float(np.linalg.norm(left_position - target)) <= float(threshold_m):
+            dwell += max(0.0, float(right_t) - float(left_t))
+    return float(dwell)
+
+
+def _controller_desired_series(controller_rows: list[dict[str, Any]]) -> list[tuple[float, np.ndarray, bool]]:
+    samples: list[tuple[float, np.ndarray, bool]] = []
+    for row in controller_rows:
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        desired_position = _pipe_vector_or_none(row.get("desired_position_world_m"))
+        if timestamp is None or desired_position is None:
+            continue
+        samples.append((float(timestamp), desired_position, _bool_from_csv(row.get("dropped_command"))))
+    return samples
+
+
+def _realized_ee_series(realized_rows: list[dict[str, Any]]) -> list[tuple[float, np.ndarray]]:
+    samples: list[tuple[float, np.ndarray]] = []
+    for row in realized_rows:
+        timestamp = _float_or_none(row.get("timestamp_s"))
+        position = _pipe_vector_or_none(row.get("end_effector_position_world_m"))
+        if timestamp is None or position is None:
+            continue
+        samples.append((float(timestamp), position))
+    return samples
+
+
+def _commanded_realized_path_deviation(
+    controller_rows: list[dict[str, Any]],
+    realized_rows: list[dict[str, Any]],
+) -> dict[str, float | None]:
+    desired_samples = _controller_desired_series(controller_rows)
+    realized_samples = _realized_ee_series(realized_rows)
+    if not desired_samples or not realized_samples:
+        return {
+            "mean_commanded_realized_path_deviation_m": None,
+            "p95_commanded_realized_path_deviation_m": None,
+            "time_integrated_commanded_realized_path_deviation_m_s": None,
+        }
+    realized_times = np.asarray([timestamp for timestamp, _ in realized_samples], dtype=np.float64)
+    deviations: list[float] = []
+    sample_times: list[float] = []
+    for timestamp, desired_position, _ in desired_samples:
+        realized_index = int(np.argmin(np.abs(realized_times - float(timestamp))))
+        realized_position = realized_samples[realized_index][1]
+        deviations.append(float(np.linalg.norm(desired_position - realized_position)))
+        sample_times.append(float(timestamp))
+    if not deviations:
+        return {
+            "mean_commanded_realized_path_deviation_m": None,
+            "p95_commanded_realized_path_deviation_m": None,
+            "time_integrated_commanded_realized_path_deviation_m_s": None,
+        }
+    integral = 0.0
+    if len(deviations) >= 2:
+        for left_time, right_time, left_deviation in zip(sample_times[:-1], sample_times[1:], deviations[:-1]):
+            integral += float(left_deviation) * max(0.0, float(right_time) - float(left_time))
+    return {
+        "mean_commanded_realized_path_deviation_m": float(np.mean(np.asarray(deviations, dtype=np.float64))),
+        "p95_commanded_realized_path_deviation_m": _safe_percentile(deviations, 95.0),
+        "time_integrated_commanded_realized_path_deviation_m_s": float(integral),
+    }
+
+
+def _dropped_command_stats(controller_rows: list[dict[str, Any]]) -> dict[str, float]:
+    timestamps = [
+        float(value)
+        for value in (_float_or_none(row.get("timestamp_s")) for row in controller_rows)
+        if value is not None
+    ]
+    median_dt = _median_dt(timestamps)
+    event_count = 0
+    total_duration_s = 0.0
+    in_event = False
+    sorted_rows = sorted(
+        controller_rows,
+        key=lambda row: _float_or_none(row.get("timestamp_s")) if _float_or_none(row.get("timestamp_s")) is not None else 1e18,
+    )
+    for index, row in enumerate(sorted_rows):
+        dropped = _bool_from_csv(row.get("dropped_command"))
+        if dropped and not in_event:
+            event_count += 1
+            in_event = True
+        if not dropped:
+            in_event = False
+            continue
+        current_time = _float_or_none(row.get("timestamp_s"))
+        if current_time is None:
+            continue
+        if index + 1 < len(sorted_rows):
+            next_time = _float_or_none(sorted_rows[index + 1].get("timestamp_s"))
+            if next_time is not None:
+                total_duration_s += max(0.0, float(next_time) - float(current_time))
+                continue
+        total_duration_s += float(median_dt)
+    return {
+        "dropped_command_event_count": float(event_count),
+        "dropped_command_duration_s": float(total_duration_s),
+    }
+
+
+def _control_success_summary(
+    control_config: dict[str, Any],
+    camera_gt_rows: list[dict[str, Any]],
+    controller_rows: list[dict[str, Any]],
+    realized_rows: list[dict[str, Any]],
+    *,
+    start_time_s: float | None,
+    end_time_s: float | None,
+) -> dict[str, float | None]:
+    waypoints = control_config.get("waypoints", []) if isinstance(control_config, dict) else []
+    gt_samples = [
+        (float(timestamp), position)
+        for row in camera_gt_rows
+        if (timestamp := _float_or_none(row.get("timestamp_s"))) is not None
+        and (position := _position_from_gt_row(row)) is not None
+    ]
+    if not waypoints or not gt_samples:
+        return {
+            "waypoint_success_fraction_1cm": None,
+            "waypoint_success_fraction_2cm": None,
+            "waypoint_success_fraction_5cm": None,
+            "mean_waypoint_dwell_time_s": None,
+            "p95_waypoint_dwell_time_s": None,
+            "final_completion_time_s": None,
+            "mean_commanded_realized_path_deviation_m": None,
+            "p95_commanded_realized_path_deviation_m": None,
+            "time_integrated_commanded_realized_path_deviation_m_s": None,
+            "dropped_command_event_count": None,
+            "dropped_command_duration_s": None,
+        }
+
+    windows = _controller_waypoint_windows(
+        controller_rows,
+        waypoint_count=len(waypoints),
+        default_end_time_s=end_time_s,
+    )
+    success_counts = {0.01: 0, 0.02: 0, 0.05: 0}
+    dwell_times_s: list[float] = []
+    final_completion_time_s: float | None = None
+    for waypoint_index, waypoint in enumerate(waypoints):
+        if not isinstance(waypoint, dict):
+            continue
+        target = _vector_or_none(waypoint.get("position_world_m"))
+        tolerance_m = _float_or_none(waypoint.get("tolerance_m"))
+        if target is None:
+            continue
+        window = windows[waypoint_index] if waypoint_index < len(windows) else {}
+        window_start_s = _float_or_none(window.get("start_s"))
+        window_end_s = _float_or_none(window.get("end_s"))
+        if window_start_s is None or window_end_s is None:
+            window_samples: list[tuple[float, np.ndarray]] = []
+        else:
+            window_samples = _series_within_window(gt_samples, start_s=window_start_s, end_s=window_end_s)
+        for threshold_m in success_counts:
+            if _window_first_hit_time_s(window_samples, target, threshold_m=float(threshold_m)) is not None:
+                success_counts[threshold_m] += 1
+        if tolerance_m is not None:
+            dwell_times_s.append(_window_dwell_time_s(window_samples, target, threshold_m=float(tolerance_m)))
+            hit_time = _window_first_hit_time_s(window_samples, target, threshold_m=float(tolerance_m))
+            if waypoint_index == len(waypoints) - 1 and hit_time is not None:
+                final_completion_time_s = float(hit_time) if start_time_s is None else float(hit_time - start_time_s)
+
+    waypoint_count = max(len(waypoints), 1)
+    path_deviation = _commanded_realized_path_deviation(controller_rows, realized_rows)
+    dropped_command = _dropped_command_stats(controller_rows)
+    return {
+        "waypoint_success_fraction_1cm": float(success_counts[0.01] / waypoint_count),
+        "waypoint_success_fraction_2cm": float(success_counts[0.02] / waypoint_count),
+        "waypoint_success_fraction_5cm": float(success_counts[0.05] / waypoint_count),
+        "mean_waypoint_dwell_time_s": None if not dwell_times_s else float(np.mean(np.asarray(dwell_times_s, dtype=np.float64))),
+        "p95_waypoint_dwell_time_s": _safe_percentile(dwell_times_s, 95.0),
+        "final_completion_time_s": final_completion_time_s,
+        "mean_commanded_realized_path_deviation_m": path_deviation["mean_commanded_realized_path_deviation_m"],
+        "p95_commanded_realized_path_deviation_m": path_deviation["p95_commanded_realized_path_deviation_m"],
+        "time_integrated_commanded_realized_path_deviation_m_s": path_deviation[
+            "time_integrated_commanded_realized_path_deviation_m_s"
+        ],
+        "dropped_command_event_count": dropped_command["dropped_command_event_count"],
+        "dropped_command_duration_s": dropped_command["dropped_command_duration_s"],
+    }
+
+
 def _first_realized_position(row: dict[str, Any]) -> float | None:
     raw = row.get("positions")
     if raw in ("", None):
@@ -502,6 +788,14 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
         float(match["position_nees"]) for match in position_matches if match.get("position_nees") is not None
     ]
     waypoint_summary = _ground_truth_waypoint_summary(bundle.manifest.controller_config, camera_gt_rows, start_time_s)
+    control_success_summary = _control_success_summary(
+        bundle.manifest.controller_config,
+        camera_gt_rows,
+        controller_diagnostics_rows,
+        bundle.raw["realized_joints"],
+        start_time_s=start_time_s,
+        end_time_s=None if not timestamps else float(max(timestamps)),
+    )
 
     coverage_hits = [
         float(match["position_error_m"]) <= float(match["position_radius_95_m"])
@@ -715,6 +1009,7 @@ def compute_isaac_run_metrics(run_dir: str | Path) -> dict[str, Any]:
             "dominant_safety_reason": dominant_safety_reason,
             "state_source_counts": current_position_source_counts,
         },
+        "control_success": control_success_summary,
         "ground_truth_available": {
             "camera_gt": bool(bundle.gt and bundle.gt.get("camera_gt")),
             "imu_gt": bool(bundle.gt and bundle.gt.get("imu_gt")),

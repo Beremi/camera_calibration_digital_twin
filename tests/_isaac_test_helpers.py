@@ -229,7 +229,15 @@ def make_minimal_isaac_run(tmp_path: Path) -> Path:
         bootstrap_control_policy="hold_until_first_detection",
         noise_presets={"imu": "phone_nominal", "actuation": "servo_nominal"},
         random_seed=7,
-        controller_config={"name": "path_tracking"},
+        controller_config={
+            "name": "path_tracking",
+            "waypoints": [
+                {
+                    "position_world_m": [0.0, 0.0, 0.0],
+                    "tolerance_m": 0.05,
+                }
+            ],
+        },
         estimator_config={"name": "anchored_vio"},
         ros2_bridge_used=False,
     )
@@ -345,6 +353,8 @@ def make_minimal_isaac_run(tmp_path: Path) -> Path:
             joint_names=("joint0",),
             positions=(0.18,),
             velocities=(0.05,),
+            end_effector_position_world_m=(0.0, 0.0, 0.0),
+            end_effector_orientation_wxyz=(1.0, 0.0, 0.0, 0.0),
             servo_internal_state={"joint0": {"effective_command": 0.19}},
         )
     )
@@ -1219,6 +1229,19 @@ def make_second_pass_draft_suite_runs(output_root: Path) -> list[Path]:
                         "completion_fraction": 1.0 if is_fused else 0.97,
                         "ik_failure_fraction": 0.02 if is_fused else 0.05,
                         "mean_actuator_tracking_error": actuator_tracking,
+                    },
+                    "control_success": {
+                        "waypoint_success_fraction_1cm": 0.40 if is_fused else 0.55,
+                        "waypoint_success_fraction_2cm": 0.70 if is_fused else 0.82,
+                        "waypoint_success_fraction_5cm": 0.92 if is_fused else 0.95,
+                        "mean_waypoint_dwell_time_s": 0.18 if is_fused else 0.21,
+                        "p95_waypoint_dwell_time_s": 0.25 if is_fused else 0.29,
+                        "final_completion_time_s": 6.2 if condition != "servo_stress" else 7.4,
+                        "mean_commanded_realized_path_deviation_m": 0.016 if is_fused else 0.013,
+                        "p95_commanded_realized_path_deviation_m": 0.024 if is_fused else 0.020,
+                        "time_integrated_commanded_realized_path_deviation_m_s": 0.11 if is_fused else 0.09,
+                        "dropped_command_event_count": 1.0 if is_fused else 0.0,
+                        "dropped_command_duration_s": 0.04 if is_fused else 0.0,
                     },
                     "uncertainty_calibration": {
                         "mean_position_radius_95_m": 0.028 if is_fused else 0.031,

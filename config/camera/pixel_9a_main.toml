@@ -1,0 +1,53 @@
+name = "pixel_9a_main"
+notes = "Derived from Pixel 9a Camera2 metadata dump and checked against Beremi/bayesian_camera_IMU_calibration sample_capture at HEAD 8ae5a1232616273187badb6afaf13cde67b6d616. This preset exports the landscape processed phone video view used by the simulator; sample_capture_* fields retain the inspected portrait MP4 metadata."
+
+[device]
+manufacturer = "Google"
+model = "Pixel 9a"
+logical_camera_id = "0"
+
+[sensor]
+active_array_width_px = 4000
+active_array_height_px = 3000
+orientation_deg = 90
+
+[optics]
+focal_length_mm = 4.53
+focus_distance_diopters = 0.2650956
+hyperfocal_distance_diopters = 0.2650956
+target_frames_per_second = 30
+timestamp_source = "REALTIME"
+
+[intrinsics.active_array]
+fx_px = 2694.107
+fy_px = 2694.107
+cx_px = 2000.6089
+cy_px = 1507.567
+skew_px = 0.0
+
+[distortion]
+model = "opencv_brown_conrady"
+coefficients = [0.15084998, -0.44805366, 0.38709834, 0.0, 0.0]
+
+[video_mode]
+width_px = 1280
+height_px = 720
+crop_mode = "center_crop"
+encoded_rotation_degrees = 0
+sample_capture_width_px = 720
+sample_capture_height_px = 1280
+sample_capture_avg_frame_rate_hz = 29.854032835201505
+sample_capture_bit_rate_bps = 11920098
+
+[rendering]
+projection_model = "pixel_processed_video_default"
+apply_lens_distortion_in_render = false
+color_space = "bt709"
+codec = "h264_high"
+
+[camera_pose_estimation]
+pattern_half_extent_m = 0.05
+measurement_unit = "mm"
+measurement_order = ["center", "top_right", "bottom_right", "bottom_left", "top_left"]
+y_axis = "up"
+undistort_before_export = false

@@ -1,0 +1,11 @@
+name: none
+delay_s: 0.0
+gain_error: 1.0
+bias: 0.0
+lag_time_constant_s: 0.010
+rate_limit_per_s: 100.0
+deadband: 0.0
+backlash: 0.0
+process_noise_std: 0.0
+drop_probability: 0.0
+jitter_std_s: 0.0

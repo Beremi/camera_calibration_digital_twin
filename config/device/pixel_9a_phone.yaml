@@ -1,0 +1,25 @@
+name: pixel_9a_phone
+namespace: /phone
+camera_model_toml: config/camera/pixel_9a_main.toml
+camera_rgb:
+  width: 1280
+  height: 720
+  fps: 30.0
+  fx: 862.11424
+  fy: 862.11424
+  cx: 640.194848
+  cy: 362.42144
+  distortion_model: opencv_pinhole
+  distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+imu:
+  rate_hz: 58.236
+  read_gravity: true
+  accel_noise_std: [0.0047856453, 0.0047856453, 0.0047856453]
+  gyro_noise_std: [0.0012217305, 0.0012217305, 0.0012217305]
+  accel_bias: [0.0, 0.0, 0.0]
+  gyro_bias: [0.0, 0.0, 0.0]
+mount:
+  camera_frame: phone_camera
+  imu_frame: phone_imu
+  imu_translation_m: [0.0, 0.0, 0.01]
+  imu_rpy_deg: [0.0, 0.0, 0.0]

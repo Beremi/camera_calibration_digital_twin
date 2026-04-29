@@ -1,0 +1,45 @@
+name: tabletop_demo_vio
+world_frame_policy: W_equals_A
+anchor_tag_fixed: true
+auxiliary_tags_are_rigid_poses: true
+filter:
+  kind: error_state_ekf
+  state_order: [R_WI, p_WI, v_WI, b_g, b_a]
+  output_rate_hz: 60.0
+  anchor_measurement_std_m: 0.01
+  auxiliary_update_trust: 0.15
+  use_aux_tags_in_filter: true
+  vision_covariance_scale: 1.0
+  anchor_vision_covariance_scale: null
+  aux_vision_covariance_scale: null
+  imu_process_covariance_scale: 4.0
+  gyro_process_covariance_scale: null
+  accel_process_covariance_scale: null
+  post_relocalization_covariance_scale: 1.0
+  allow_anchor_reacquisition_after_first_lock: true
+  disable_imu_prediction_while_anchor_suppressed: false
+  suppression_imu_specific_force_gate_mps2: 20.0
+  suppression_propagation_mode: full_imu
+  anchor_reacquisition_max_innovation_norm: null
+  anchor_reacquisition_max_nis: null
+  dropout_post_reacquisition_covariance_scale: null
+  dropout_max_reacquisition_position_correction_m: null
+  dropout_max_reacquisition_rotation_correction_deg: null
+  dropout_max_reacquisition_velocity_correction_mps: null
+  auxiliary_update_min_corner_margin_px: 12.0
+  auxiliary_update_min_visibility_streak: 1
+  auxiliary_update_max_reprojection_error_px: 24.0
+  auxiliary_update_max_innovation_norm: 0.40
+  auxiliary_update_max_mahalanobis_score: 128.0
+  auxiliary_update_max_feedback_correction_m: 0.30
+smoother:
+  backend: lightweight
+  lag_size: 30
+  solve_rate_hz: 10.0
+  refine_biases: true
+  refine_auxiliary_tags: true
+  use_aux_tags_in_smoother: true
+  min_feedback_observation_count: 5
+  max_feedback_correction_norm_m: 0.30
+  actuator_nuisance_mode: reduced
+no_ground_truth_inference: true

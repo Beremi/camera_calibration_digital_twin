@@ -1,0 +1,11 @@
+name: servo_nominal
+delay_s: 0.015
+gain_error: 0.985
+bias: 0.004
+lag_time_constant_s: 0.060
+rate_limit_per_s: 4.0
+deadband: 0.0025
+backlash: 0.0015
+process_noise_std: 0.0005
+drop_probability: 0.01
+jitter_std_s: 0.002

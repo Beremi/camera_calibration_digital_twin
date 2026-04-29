@@ -1,0 +1,21 @@
+name: phone_tabletop_demo
+prim_path: /World/Robot/panda_hand/phone_mount/camera
+source_toml_path: config/camera/pixel_9a_main.toml
+width_px: 1280
+height_px: 720
+rate_hz: 30.0
+frame_id: C
+local_translation_m: [0.0, -0.03, -0.12]
+local_orientation_rpy_deg: [0.0, 0.0, 0.0]
+mount_offset_world_m: [0.0, 0.0, 0.0]
+look_at_world_m: [0.1595, 0.2903, 0.8341]
+focal_length_mm: 4.53
+horizontal_aperture_mm: 6.725791
+vertical_aperture_mm: 3.783257
+intrinsics:
+  fx_px: 862.114240
+  fy_px: 862.114240
+  cx_px: 640.194848
+  cy_px: 362.421440
+distortion_model: opencv_pinhole
+distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]

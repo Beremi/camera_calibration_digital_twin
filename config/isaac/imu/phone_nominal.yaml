@@ -1,0 +1,18 @@
+name: phone_nominal
+prim_path: /World/Robot/panda_hand/phone_imu
+parent_prim_path: /World/Robot/panda_hand
+rate_hz: 58.236
+frame_id: I
+local_translation_m: [0.0, 0.0, 0.0]
+local_orientation_rpy_deg: [0.0, 0.0, 0.0]
+read_gravity: true
+imu_semantics: specific_force
+noise_preset: imu_nominal_phone
+gravity_world_mps2: [0.0, 0.0, -9.81]
+synthetic_velocity_lowpass_alpha: 0.25
+synthetic_max_world_velocity_mps: 2.5
+synthetic_max_world_acceleration_mps2: 35.0
+synthetic_max_specific_force_mps2: 40.0
+bias_model:
+  accel_bias_initial_mps2: [0.0, 0.0, 0.0]
+  gyro_bias_initial_rps: [0.0, 0.0, 0.0]

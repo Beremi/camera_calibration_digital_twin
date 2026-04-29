@@ -1,0 +1,121 @@
+"""State and snapshot containers for Isaac estimation."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+import numpy as np
+
+
+def _matrix_json(matrix: np.ndarray) -> list[list[float]]:
+    return [[float(value) for value in row] for row in np.asarray(matrix, dtype=np.float64)]
+
+
+def _json_compatible(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return np.asarray(value, dtype=np.float64).tolist()
+    if isinstance(value, dict):
+        return {str(key): _json_compatible(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_compatible(item) for item in value]
+    if isinstance(value, (np.floating, float)):
+        return float(value)
+    if isinstance(value, (np.integer, int)):
+        return int(value)
+    if isinstance(value, (np.bool_, bool)):
+        return bool(value)
+    return value
+
+
+@dataclass(slots=True)
+class MotionState:
+    rotation_wi: np.ndarray
+    position_world_m: np.ndarray
+    velocity_world_mps: np.ndarray
+    gyro_bias_rps: np.ndarray
+    accel_bias_mps2: np.ndarray
+
+
+@dataclass(slots=True)
+class FilterStateSnapshot:
+    timestamp_s: float
+    sim_time_s: float
+    rotation_wi: np.ndarray
+    position_world_m: np.ndarray
+    velocity_world_mps: np.ndarray
+    gyro_bias_rps: np.ndarray
+    accel_bias_mps2: np.ndarray
+    covariance: np.ndarray
+    anchor_visible: bool = False
+    mode: str = "visual_inertial_anchor_plus_aux_tags"
+    innovation_diagnostics: dict[str, Any] = field(default_factory=dict)
+    auxiliary_rejection_reason_counts: dict[str, int] = field(default_factory=dict)
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "timestamp_s": float(self.timestamp_s),
+            "sim_time_s": float(self.sim_time_s),
+            "rotation_wi": _matrix_json(self.rotation_wi),
+            "position_world_m": [float(value) for value in np.asarray(self.position_world_m, dtype=np.float64)],
+            "velocity_world_mps": [float(value) for value in np.asarray(self.velocity_world_mps, dtype=np.float64)],
+            "gyro_bias_rps": [float(value) for value in np.asarray(self.gyro_bias_rps, dtype=np.float64)],
+            "accel_bias_mps2": [float(value) for value in np.asarray(self.accel_bias_mps2, dtype=np.float64)],
+            "covariance": _matrix_json(self.covariance),
+            "anchor_visible": bool(self.anchor_visible),
+            "estimator_mode": self.mode,
+            "mode": self.mode,
+            "innovation_diagnostics": _json_compatible(self.innovation_diagnostics),
+            "auxiliary_rejection_reason_counts": {
+                str(key): int(value) for key, value in self.auxiliary_rejection_reason_counts.items()
+            },
+        }
+
+
+@dataclass(slots=True)
+class SmootherStateSnapshot:
+    timestamp_s: float
+    sim_time_s: float
+    active_tag_poses: dict[int, np.ndarray]
+    cloned_positions_world_m: tuple[np.ndarray, ...]
+    covariance: np.ndarray
+    cost_trace: tuple[float, ...] = ()
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "timestamp_s": float(self.timestamp_s),
+            "sim_time_s": float(self.sim_time_s),
+            "active_tag_poses": {str(tag_id): _matrix_json(pose) for tag_id, pose in self.active_tag_poses.items()},
+            "cloned_positions_world_m": [
+                [float(value) for value in np.asarray(position, dtype=np.float64)]
+                for position in self.cloned_positions_world_m
+            ],
+            "covariance": _matrix_json(self.covariance),
+            "cost_trace": [float(value) for value in self.cost_trace],
+            "diagnostics": _json_compatible(self.diagnostics),
+        }
+
+
+@dataclass(slots=True)
+class UncertaintySnapshot:
+    timestamp_s: float
+    sim_time_s: float
+    pose_covariance: np.ndarray
+    velocity_covariance: np.ndarray
+    bias_covariance: np.ndarray
+    position_radius_95_m: float
+    velocity_radius_95_mps: float
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "timestamp_s": float(self.timestamp_s),
+            "sim_time_s": float(self.sim_time_s),
+            "pose_covariance": _matrix_json(self.pose_covariance),
+            "velocity_covariance": _matrix_json(self.velocity_covariance),
+            "bias_covariance": _matrix_json(self.bias_covariance),
+            "position_radius_95_m": float(self.position_radius_95_m),
+            "velocity_radius_95_mps": float(self.velocity_radius_95_mps),
+            "diagnostics": _json_compatible(self.diagnostics),
+        }

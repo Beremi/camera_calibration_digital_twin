@@ -1,0 +1,31 @@
+name: franka_tabletop_grab_challenge
+robot_name: franka
+asset_mode: usd
+asset_path: Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd
+articulation_prim_path: /World/Robot
+ee_frame: panda_hand
+camera_mount_prim_path: /World/Robot/panda_hand/phone_mount
+imu_mount_prim_path: /World/Robot/panda_hand/phone_imu
+camera_mount_translation_m: [0.02, 0.00, 0.10]
+camera_mount_rpy_deg: [0.0, -90.0, 90.0]
+imu_mount_translation_m: [0.02, 0.00, 0.11]
+imu_mount_rpy_deg: [0.0, -90.0, 90.0]
+joint_names:
+  - panda_joint1
+  - panda_joint2
+  - panda_joint3
+  - panda_joint4
+  - panda_joint5
+  - panda_joint6
+  - panda_joint7
+  - panda_finger_joint1
+  - panda_finger_joint2
+control_mode: position
+base_position_world_m: [0.00, 1.33, 0.72]
+base_orientation_rpy_deg: [0.0, 0.0, 0.0]
+default_joint_positions_deg: [5.807179388818595, -3.629238582316507, -26.411036953055827, -119.90471756538395, -35.65166317389466, 31.05558802334305, -5.043925662047635]
+ik_robot_name: Franka
+ik_frame_name: panda_hand
+replica_reference_arm_preset: config/interactive/robot_arms/long_reach_tabletop.yaml
+replica_reference_link_lengths_m: [0.34, 0.30, 0.22]
+replica_reference_initial_servos_deg: [-36.0, 60.0, -56.0]

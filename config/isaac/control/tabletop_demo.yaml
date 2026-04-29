@@ -1,0 +1,21 @@
+name: tabletop_demo_control
+path_frame: W
+command_space: anchored_position_delta
+use_aux_map_for_control: true
+proportional_gain: 0.5
+max_command_abs: 0.04
+max_position_step_m: 0.04
+ik_retry_alphas: [1.0, 0.5, 0.25, 0.1, 0.0]
+degrade_after_consecutive_ik_failures: 4
+degraded_gain_scale: 0.35
+workspace_aabb_world_m:
+  min: [-0.32, 0.30, 0.74]
+  max: [0.72, 1.24, 1.20]
+ik_workspace_aabb_world_m:
+  min: [-0.08, 0.56, 0.84]
+  max: [0.70, 1.18, 1.24]
+gates:
+  max_position_radius_95_m: 0.35
+  max_innovation_norm: 3.0
+  max_anchor_lost_steps: 45
+waypoints: []

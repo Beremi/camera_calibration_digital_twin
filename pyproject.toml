@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "calib-sim-blueprint"
+version = "0.1.0"
+description = "Simulation-first camera/IMU calibration bench scaffold"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "websockets>=12.0",
+    "jax>=0.9",
+    "numpy>=1.26",
+    "opencv-python>=4.9",
+    "pupil-apriltags>=1.0.4.post11",
+    "pydantic>=2.6",
+    "python-multipart>=0.0.9",
+    "PyYAML>=6.0",
+    "requests>=2.31",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
